@@ -19,3 +19,7 @@ assets/
 # orchestrator local state
 apps/orchestrator/certs/
 apps/orchestrator/session.db*
+
+# pwa build artifacts
+apps/pwa/dist/
+apps/pwa/.svelte-kit/

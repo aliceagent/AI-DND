@@ -1,0 +1,12 @@
+{
+  "name": "Hermys",
+  "short_name": "Hermys",
+  "description": "Your Box at the table: sheet, push-to-talk, rolls, private reveals.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#14131c",
+  "theme_color": "#14131c",
+  "icons": [
+    { "src": "/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }
+  ]
+}

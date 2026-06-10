@@ -147,6 +147,7 @@ export class SessionHub {
     const target = this.checkpoints.pop() ?? this.tip();
     this.engine.rewindTo(target, `xcard-${++this.xcardCount}`);
     this.resetCursors(target);
+    this.broadcast({ type: "truncate", after: target }); // clients drop stale events
     this.broadcast({ type: "xcard_rewound" }); // no attribution, ever
     this.flushAll();
   }
@@ -154,6 +155,7 @@ export class SessionHub {
   private rewindTo(eventId: number): void {
     this.engine.rewindTo(eventId, `host-rewind-${++this.xcardCount}`);
     this.resetCursors(eventId);
+    this.broadcast({ type: "truncate", after: eventId });
     this.broadcast({ type: "rewound", to: eventId });
     this.flushAll();
   }

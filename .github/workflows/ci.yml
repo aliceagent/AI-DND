@@ -45,6 +45,16 @@ jobs:
       - run: npx tsx --test test/*.test.ts
         working-directory: apps/orchestrator
 
+  pwa:
+    runs-on: ubuntu-latest
+    defaults: { run: { working-directory: apps/pwa } }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - run: npm install
+      - run: npm run build
+
   schemas:
     runs-on: ubuntu-latest
     steps:

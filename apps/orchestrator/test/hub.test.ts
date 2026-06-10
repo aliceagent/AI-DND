@@ -102,6 +102,8 @@ test("x-card: anonymous, rewinds the turn, feeds reset past the cut", async () =
   const note = t.screen.ofType("xcard_rewound")[0];
   assert.ok(note, "x-card not announced");
   assert.equal(Object.keys(note).length, 1, "x-card message must carry no attribution");
+  const trunc = t.screen.ofType("truncate")[0];
+  assert.ok(trunc && typeof trunc.after === "number", "clients need the cut point to drop stale events");
   assert.ok(t.engine.store.activeBranch().startsWith("xcard-"));
   // the rewound content is off the timeline (recaps clean) but in the raw log (audit)
   assert.ok(!t.engine.store.timeline().some(e => (e.payload as any)?.text?.includes("terrible")));
