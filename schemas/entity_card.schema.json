@@ -1,0 +1,97 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "hermys/entity_card.schema.json",
+  "title": "EntityCard",
+  "description": "The unit of fog-of-war. Everything renderable, speakable, or knowable is a card with discrete states. Image prompts, voice casting, and reveals all key off this object — module text never enters those paths directly.",
+  "type": "object",
+  "required": ["id", "kind", "states", "current_state", "reveal"],
+  "additionalProperties": false,
+  "properties": {
+    "id": { "type": "string", "pattern": "^[a-z0-9_.-]+$", "examples": ["npc.nighthill", "loc.mill", "obj.shrine_chest"] },
+    "kind": { "enum": ["npc", "creature", "location", "object", "faction", "lore"] },
+    "pack": { "type": "string", "description": "Owning campaign pack id; enforces the engine/pack boundary." },
+    "names": {
+      "type": "object",
+      "properties": {
+        "canonical": { "type": "string" },
+        "unrevealed_alias": { "type": "string", "description": "What Pip calls it before identity is revealed, e.g. 'the scaled champion'." }
+      },
+      "required": ["canonical"]
+    },
+    "states": {
+      "type": "object",
+      "description": "Keyed by state id. A card is always in exactly one state; reveal transitions move it between states.",
+      "minProperties": 1,
+      "additionalProperties": {
+        "type": "object",
+        "required": ["facts"],
+        "additionalProperties": false,
+        "properties": {
+          "facts": {
+            "type": "array",
+            "items": { "$ref": "#/$defs/fact" },
+            "description": "Atomic, individually revealable facts about the entity in this state."
+          },
+          "prompt_fragment": {
+            "type": "string",
+            "description": "Original-language visual description used by the manifest renderer. NEVER copied from module text."
+          },
+          "anchor_asset": { "type": ["string", "null"], "description": "Asset-store hash of the pre-rendered anchor for this state." },
+          "lora_ref": { "type": ["string", "null"] },
+          "voice_ref": {
+            "type": ["object", "null"],
+            "properties": {
+              "voice_id": { "type": "string", "description": "Troupe member or dedicated preset id." },
+              "style": { "type": "object", "description": "Engine-specific knobs: pitch, pace, energy." }
+            },
+            "required": ["voice_id"]
+          },
+          "stat_ref": { "type": ["string", "null"], "description": "Engine stat-block id (SRD or pack-verified). Stats never live inline on the card." },
+          "sfx_tags": { "type": "array", "items": { "type": "string" } }
+        }
+      }
+    },
+    "current_state": { "type": "string" },
+    "reveal": {
+      "type": "object",
+      "required": ["mode"],
+      "additionalProperties": false,
+      "properties": {
+        "mode": { "enum": ["public_on_sight", "check_gated", "event_gated", "gm_only"] },
+        "gate": {
+          "type": "object",
+          "description": "Required when mode is check_gated or event_gated.",
+          "properties": {
+            "skill": { "type": "string" },
+            "dc": { "type": "integer" },
+            "beat_id": { "type": "string" }
+          }
+        },
+        "revealed_to": {
+          "oneOf": [
+            { "const": "party" },
+            { "type": "array", "items": { "type": "string" }, "description": "Character ids." },
+            { "const": "none" }
+          ],
+          "default": "none",
+          "description": "Derived cache of reveal_fact events; the event log is the source of truth."
+        }
+      }
+    },
+    "rules_notes": { "type": "string", "description": "2014→2024 reconciliation patches applied at ingestion review." },
+    "source_ref": { "type": "string", "description": "Page/section pointer into the pack for the Prep Bench. Reference only — never content." }
+  },
+  "$defs": {
+    "fact": {
+      "type": "object",
+      "required": ["id", "text"],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "type": "string" },
+        "text": { "type": "string", "description": "Original paraphrase, one assertion." },
+        "scope": { "enum": ["public", "gated", "gm_only"], "default": "gated" },
+        "renderable": { "type": "boolean", "default": false, "description": "May this fact influence the visual manifest?" }
+      }
+    }
+  }
+}

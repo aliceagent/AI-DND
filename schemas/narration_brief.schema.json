@@ -1,0 +1,111 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "hermys/narration_brief.schema.json",
+  "title": "NarrationBrief",
+  "description": "The ONLY input the Narrator receives about the world (plus the rolling revealed transcript and tone profile). If it isn't in the brief, Pip cannot know it. The context assembler validates every brief against this schema and rejects any field containing gm_only fact ids before the Narrator call is made.",
+  "type": "object",
+  "required": ["beat_id", "scene_facts", "tone", "delivery"],
+  "additionalProperties": false,
+  "properties": {
+    "beat_id": { "type": "string" },
+    "scene_facts": {
+      "type": "array",
+      "description": "Revealed facts to narrate from, in Director-chosen order of emphasis. Each carries provenance so leaks are auditable.",
+      "items": {
+        "type": "object",
+        "required": ["text"],
+        "additionalProperties": false,
+        "properties": {
+          "text": { "type": "string" },
+          "fact_ref": { "type": ["string", "null"], "description": "entity_card fact id; null for Director-original color." },
+          "emphasis": { "enum": ["lead", "support", "background"], "default": "support" }
+        }
+      }
+    },
+    "sanctioned_hints": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Director-authored foreshadow lines, pre-laundered: they gesture at hidden content without containing it. Pip may use verbatim or rephrase, but may not extend them."
+    },
+    "negative_constraints": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Hard prohibitions ('do not describe the loft interior', 'do not name any creature in this room'). Also used by the post-hoc leak check as its assertion list."
+    },
+    "speakers": {
+      "type": "array",
+      "description": "NPCs permitted to speak this beat, with their revealed-state alias and voice routing.",
+      "items": {
+        "type": "object",
+        "required": ["entity_id", "display_name", "voice_id"],
+        "properties": {
+          "entity_id": { "type": "string" },
+          "display_name": { "type": "string", "description": "Canonical name or unrevealed_alias per current reveal state." },
+          "voice_id": { "type": "string" },
+          "disposition": { "type": "string" },
+          "may_reveal": { "type": "array", "items": { "type": "string" }, "description": "Fact ids this NPC is allowed to disclose in dialogue this beat." }
+        }
+      }
+    },
+    "spotlight": {
+      "type": ["object", "null"],
+      "properties": {
+        "character_id": { "type": "string" },
+        "reason": { "enum": ["quiet_player", "story_hook", "consequence", "private_reveal_followup"] }
+      },
+      "description": "Address this character directly; their Box lights. Fed by spotlight-debt in the Table State vector."
+    },
+    "tone": {
+      "type": "object",
+      "required": ["register"],
+      "properties": {
+        "register": { "type": "string", "examples": ["urgent-cinematic", "dread", "warm-hub", "wry"] },
+        "tension": { "type": "integer", "minimum": 0, "maximum": 10 },
+        "pace_directive": { "enum": ["cut_to_action", "linger", "neutral", "wrap_scene"], "default": "neutral" }
+      }
+    },
+    "delivery": {
+      "type": "object",
+      "required": ["max_sentences"],
+      "properties": {
+        "max_sentences": { "type": "integer", "minimum": 1, "maximum": 12 },
+        "person": { "enum": ["second", "third"], "default": "second" },
+        "end_with": { "enum": ["open_question", "check_call", "hard_beat", "free"], "default": "free" },
+        "check_call": {
+          "type": ["object", "null"],
+          "description": "Present when end_with=check_call. DC is NEVER included here.",
+          "properties": {
+            "actor": { "type": "string" },
+            "kind": { "enum": ["check", "save", "attack"] },
+            "ability": { "type": "string" },
+            "skill": { "type": ["string", "null"] },
+            "advantage": { "enum": ["none", "adv", "dis"] }
+          },
+          "required": ["actor", "kind", "ability"]
+        }
+      }
+    },
+    "av_cues": {
+      "type": "object",
+      "description": "Bundled cues the Orchestrator fires alongside narration (the door-clock showcase is pure data through this field).",
+      "properties": {
+        "music_mood": { "type": ["string", "null"] },
+        "music_escalation_step": { "type": ["integer", "null"] },
+        "sfx": { "type": "array", "items": { "type": "string" } },
+        "image_request": {
+          "type": ["object", "null"],
+          "properties": {
+            "manifest_ref": { "type": "string", "description": "Id of a VisibleManifest already emitted by the Director." },
+            "mode": { "enum": ["anchor", "variant", "improv"] }
+          },
+          "required": ["manifest_ref", "mode"]
+        }
+      }
+    },
+    "canon_capture": {
+      "type": "boolean",
+      "default": true,
+      "description": "If true, concrete world assertions Pip invents are extracted post-hoc and either ratified into the event log or corrected next beat."
+    }
+  }
+}

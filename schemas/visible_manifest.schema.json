@@ -1,0 +1,51 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "hermys/visible_manifest.schema.json",
+  "title": "VisibleManifest",
+  "description": "The ONLY input to image generation. Assembled by the Director exclusively from entity cards whose current state is revealed to the requested audience. The renderer concatenates prompt_fragments + composition; module text is structurally absent from this path. Audit: the VLM seatbelt checks improv renders against the audit_negatives list.",
+  "type": "object",
+  "required": ["id", "audience", "entities", "composition"],
+  "additionalProperties": false,
+  "properties": {
+    "id": { "type": "string" },
+    "beat_id": { "type": "string" },
+    "audience": {
+      "oneOf": [
+        { "const": "shared_screen" },
+        { "type": "array", "items": { "type": "string" }, "description": "Character ids — a private vision on one Box." }
+      ]
+    },
+    "entities": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["entity_id", "state"],
+        "additionalProperties": false,
+        "properties": {
+          "entity_id": { "type": "string" },
+          "state": { "type": "string", "description": "Must equal the card's current revealed state for this audience; the assembler enforces this invariant." },
+          "role": { "enum": ["setting", "subject", "background"], "default": "subject" },
+          "anchor_asset": { "type": ["string", "null"], "description": "Reference image for conditioning; required for recurring stars." },
+          "lora_ref": { "type": ["string", "null"] }
+        }
+      }
+    },
+    "composition": {
+      "type": "object",
+      "properties": {
+        "framing": { "type": "string", "examples": ["wide establishing", "over-the-shoulder", "portrait"] },
+        "lighting": { "type": "string" },
+        "moment": { "type": "string", "description": "Director-original action description built only from revealed facts." }
+      }
+    },
+    "style_preset": { "type": "string", "description": "Campaign tone profile's visual half." },
+    "audit_negatives": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Descriptions of currently-hidden entities adjacent to this scene; the VLM seatbelt asserts their absence in improv renders.",
+      "examples": [["armed figures in a loft", "a partially buried egg among rocks"]]
+    },
+    "priority": { "enum": ["prep", "improv"], "description": "improv = P1, runs only in narration windows; prep = P2, never live." }
+  }
+}

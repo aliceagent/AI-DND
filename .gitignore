@@ -1,0 +1,17 @@
+# The legal boundary: campaign packs are private, personal-use content.
+# They never enter version control. See packs/README.md.
+packs/*
+!packs/README.md
+
+node_modules/
+dist/
+*.log
+results.jsonl
+RESULTS.md
+bench/config.yaml
+__pycache__/
+.venv/
+.DS_Store
+*.gguf
+*.safetensors
+assets/

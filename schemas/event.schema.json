@@ -1,0 +1,53 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "hermys/event.schema.json",
+  "title": "Event",
+  "description": "Append-only event-log entry. Invariant: nothing player-visible exists except through visibility-tagged events. Recaps, fog-of-war, Box lore feeds, rewind, and the actual-play export are all filtered folds over this stream.",
+  "type": "object",
+  "required": ["id", "ts", "session_id", "branch_id", "type", "visibility", "payload"],
+  "additionalProperties": false,
+  "properties": {
+    "id": { "type": "string", "description": "ULID — sortable, unique." },
+    "ts": { "type": "string", "format": "date-time" },
+    "session_id": { "type": "string" },
+    "branch_id": {
+      "type": "string",
+      "description": "X-card rewinds open a new branch; excluded branches are retained but filtered from recaps and state folds.",
+      "default": "main"
+    },
+    "type": {
+      "enum": [
+        "declaration", "check_called", "roll_reported", "check_resolved",
+        "damage_applied", "healing_applied", "condition_changed",
+        "initiative_advanced", "entity_moved", "item_granted", "item_used",
+        "slot_spent", "fact_revealed", "state_transitioned", "scene_set",
+        "clock_ticked", "narration_delivered", "canon_ratified",
+        "xcard_invoked", "branch_excluded", "box_unlock_granted",
+        "session_opened", "session_closed", "downtime_applied", "level_up"
+      ]
+    },
+    "actor": { "type": ["string", "null"], "description": "Character/NPC id or 'tally'/'engine'." },
+    "visibility": {
+      "oneOf": [
+        { "const": "public" },
+        { "const": "gm" },
+        { "type": "array", "items": { "type": "string" }, "description": "Character ids — a private reveal lands on exactly these Boxes." }
+      ]
+    },
+    "payload": {
+      "type": "object",
+      "description": "Type-specific body. Two contracts worth pinning:",
+      "examples": [
+        {
+          "type": "check_resolved",
+          "payload": { "actor": "char.kael", "kind": "check", "ability": "dex", "skill": "stealth", "roll": 14, "modifier": 5, "total": 19, "dc": 12, "dc_visibility": "gm", "outcome": "success", "advantage": "none" }
+        },
+        {
+          "type": "fact_revealed",
+          "payload": { "entity_id": "loc.mill", "fact_id": "fire_is_theater", "via": "check:insight", "transitions_state_to": "ambush_known" }
+        }
+      ]
+    },
+    "causes": { "type": ["string", "null"], "description": "Parent event id, giving the log a causal chain for audits and the leak replay." }
+  }
+}

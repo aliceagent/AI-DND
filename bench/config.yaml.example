@@ -1,0 +1,39 @@
+# Hermys Phase 0 bench configuration
+llm:
+  base_url: "http://127.0.0.1:8080/v1"
+  api_key: "local"
+  model: "gpt-oss-120b"
+  director_max_tokens: 400
+  narrator_max_tokens: 350
+  # llama.cpp honors cache_prompt; vLLM uses automatic prefix caching
+  cache_prompt: true
+
+stt:
+  model: "large-v3-turbo"          # faster-whisper id
+  device: "cuda"
+  compute_type: "float16"
+  beam_size: 1                     # PTT clips are short; greedy is fine
+
+tts:
+  engine: "kokoro"
+  voice: "af_heart"                # Pip's bench voice
+  sample_rate: 24000
+
+image:
+  model: "stabilityai/sdxl-turbo"
+  steps: 4
+  width: 1024
+  height: 1024
+
+bench:
+  turn_repeats: 10
+  window_narration_seconds: 25     # simulated Pip playback window
+  results_file: "results.jsonl"
+
+gates:
+  transcript_s: 0.7
+  director_first_token_s: 2.0
+  first_syllable_s: 4.0
+  decode_degradation_pct: 30
+  warm_ttft_ratio: 0.25
+  resident_gb: 100

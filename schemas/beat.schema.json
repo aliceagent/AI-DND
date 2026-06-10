@@ -1,0 +1,73 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "hermys/beat.schema.json",
+  "title": "Beat",
+  "description": "A node in the campaign BeatGraph produced by ingestion and approved on the Prep Bench. The Director navigates these; off-script play creates ad-hoc beats that link back into the graph.",
+  "type": "object",
+  "required": ["id", "episode", "type", "exits"],
+  "additionalProperties": false,
+  "properties": {
+    "id": { "type": "string", "examples": ["e1.seek_the_keep", "e1.mill", "e3.shrine"] },
+    "episode": { "type": "string" },
+    "type": { "enum": ["scene", "encounter", "social", "reveal", "clock", "hub", "travel", "duel", "adhoc"] },
+    "entry_conditions": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Predicates over engine state / revealed facts, e.g. 'party.location == loc.keep', 'clock.night >= 3'."
+    },
+    "mandatory_first": { "type": "boolean", "default": false, "description": "E.g. the module requires one specific encounter before the hub opens." },
+    "narration_brief_seed": { "type": "object", "description": "Partial NarrationBrief the Director starts from (tone, hints, constraints)." },
+    "manifest_seed": { "type": "object", "description": "Partial VisibleManifest for the beat's establishing image; pre-rendered at prep." },
+    "entities": { "type": "array", "items": { "type": "string" }, "description": "Entity-card ids in play this beat." },
+    "secrets": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Fact ids that are hidden at beat entry. Drives the per-episode red-team checklist and the post-slice leak audit."
+    },
+    "encounter": {
+      "type": ["object", "null"],
+      "properties": {
+        "groups": { "type": "array", "items": { "type": "object", "properties": { "stat_ref": { "type": "string" }, "count_expr": { "type": "string", "examples": ["1d6", "1 per PC"] } }, "required": ["stat_ref", "count_expr"] } },
+        "scaling_note": { "type": "string" },
+        "morale": { "type": "string", "description": "Original-language behavior summary (flee thresholds, tactics)." }
+      }
+    },
+    "clock": {
+      "type": ["object", "null"],
+      "description": "Tension clocks. Each tick fires its cue bundle — SFX + screen widget + music step — as pure data.",
+      "properties": {
+        "resource": { "type": "string", "examples": ["door_hp", "night_hours"] },
+        "start": { "type": "integer" },
+        "tick_expr": { "type": "string", "examples": ["1d6 per ram hit", "1 per mission"] },
+        "thresholds": {
+          "type": "array",
+          "items": { "type": "object", "properties": { "at": { "type": "integer" }, "cue_bundle": { "type": "object" }, "fact_revealed": { "type": ["string", "null"] } }, "required": ["at"] }
+        },
+        "on_zero": { "type": "string", "description": "Beat id or consequence." }
+      }
+    },
+    "rewards": {
+      "type": "object",
+      "properties": {
+        "xp_rules": { "type": "array", "items": { "type": "string" }, "description": "Original paraphrase of award conditions, machine-checkable where possible." },
+        "treasure_refs": { "type": "array", "items": { "type": "string" } },
+        "box_unlocks": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "rules_notes": { "type": "string", "description": "2014→2024 patches for this beat (e.g. surprise handling)." },
+    "exits": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["to"],
+        "properties": {
+          "to": { "type": "string" },
+          "condition": { "type": ["string", "null"] },
+          "kind": { "enum": ["success", "failure", "retreat", "time", "free"], "default": "free" }
+        }
+      }
+    },
+    "source_ref": { "type": "string", "description": "Pack page/section pointer for the Prep Bench. Reference only." },
+    "approved": { "type": "boolean", "default": false, "description": "Set only by a human on the Prep Bench. Unapproved beats never enter a live session." }
+  }
+}
