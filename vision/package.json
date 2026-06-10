@@ -1,0 +1,20 @@
+{
+  "name": "hermys-vision",
+  "version": "1.0.0",
+  "description": "Visual fog-of-war by construction: manifest → prompt assembly (the live safety boundary) + the prep-batch render planner",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "tsx --test test/*.test.ts",
+    "typecheck": "tsc --noEmit",
+    "plan": "tsx src/cli.ts"
+  },
+  "dependencies": {
+    "ajv": "^8.17.1"
+  },
+  "devDependencies": {
+    "@types/node": "^25.9.2",
+    "tsx": "^4.22.4",
+    "typescript": "^6.0.3"
+  }
+}

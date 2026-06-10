@@ -53,5 +53,10 @@ measurement, not scaffolding. Run in order; each item names its gate.
     regressions in the turn pipeline are bugs).
 11. Ingestion LLM passes (mac-week step 4 scaffold) against the real stack;
     Prep Bench review of Episode 1's first beats.
-12. Port launchd patterns to systemd units; start the overnight asset-prep
-    batch (anchors, variants, the five LoRAs).
+12. Enable the drafted units in `docs/systemd/` (edit paths/users first).
+13. Start the overnight asset-prep batch from the plan the Mac already
+    wrote: `cd vision && npm run plan -- --stars npc.<a>,npc.<b>` after the
+    Bench review, then feed `packs/hotdq/assets/render-plan.json` to the
+    SDXL worker — LoRA queue (P1 stars) first, then anchors, then the
+    reveal-state variants. Seeds are deterministic per entity/state, so
+    re-planning never invalidates finished renders.
