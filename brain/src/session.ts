@@ -25,9 +25,11 @@ export function newSession(seed = 1234): Engine {
 export async function playTurn(
   llm: LlmClient, engine: Engine, pack: ScenePack,
   declaration: { actor: string; text: string } | null,
-  opts: { canon?: boolean } = {},
+  opts: { canon?: boolean; recordDeclaration?: boolean } = {},
 ): Promise<TurnResult> {
-  if (declaration) engine.declare(declaration.actor, declaration.text);
+  // the orchestrator records declarations itself (recordDeclaration: false)
+  if (declaration && opts.recordDeclaration !== false)
+    engine.declare(declaration.actor, declaration.text);
   const director = await runDirectorTurn(llm, engine, pack, declaration);
   const narration = await narrate(llm, engine, pack, director.brief);
   const ev = engine.recordNarration(narration, String(director.brief.beat_id ?? ""));

@@ -30,6 +30,21 @@ jobs:
       - run: npx tsx --test test/*.test.ts
         working-directory: brain
 
+  orchestrator:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - run: npm install
+        working-directory: engine   # orchestrator imports engine sources
+      - run: npm install
+        working-directory: apps/orchestrator
+      - run: npx tsc --noEmit
+        working-directory: apps/orchestrator
+      - run: npx tsx --test test/*.test.ts
+        working-directory: apps/orchestrator
+
   schemas:
     runs-on: ubuntu-latest
     steps:

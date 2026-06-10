@@ -15,3 +15,7 @@ __pycache__/
 *.gguf
 *.safetensors
 assets/
+
+# orchestrator local state
+apps/orchestrator/certs/
+apps/orchestrator/session.db*

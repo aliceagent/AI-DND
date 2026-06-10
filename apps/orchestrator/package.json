@@ -1,0 +1,22 @@
+{
+  "name": "hermys-orchestrator",
+  "version": "1.0.0",
+  "description": "Phase 3: WebSocket hub — sequences STT → Director → Engine → Narrator → TTS; role-gated client feeds",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "tsx --test test/*.test.ts",
+    "typecheck": "tsc --noEmit",
+    "serve": "tsx src/server.ts",
+    "setup-https": "bash scripts/setup-https.sh"
+  },
+  "dependencies": {
+    "ws": "^8.18.0"
+  },
+  "devDependencies": {
+    "@types/node": "^25.9.2",
+    "@types/ws": "^8.18.1",
+    "tsx": "^4.22.4",
+    "typescript": "^6.0.3"
+  }
+}
