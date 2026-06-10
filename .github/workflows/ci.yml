@@ -39,6 +39,8 @@ jobs:
       - run: npm install
         working-directory: engine   # orchestrator imports engine sources
       - run: npm install
+        working-directory: brain    # …and brain sources (BrainDM)
+      - run: npm install
         working-directory: apps/orchestrator
       - run: npx tsc --noEmit
         working-directory: apps/orchestrator
