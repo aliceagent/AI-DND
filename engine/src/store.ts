@@ -1,6 +1,8 @@
 /** Append-only, branch-aware event store. Invariant: nothing player-visible
- *  exists except through visibility-tagged events. SQLite in production;
- *  in-memory + JSONL here — the interface is what matters. */
+ *  exists except through visibility-tagged events. Two implementations share
+ *  this interface: the in-memory store here (tests, demos) and the SQLite
+ *  store in sqlite.ts (production). JSONL import/export is the portability
+ *  and leak-audit format for both. */
 
 export type Visibility = "public" | "gm" | string[]; // string[] = character ids
 
@@ -14,13 +16,30 @@ export interface GameEvent {
   causes?: number;
 }
 
+export interface Snapshot { eventId: number; state: unknown }
+
+/** The contract the engine codes against. SQLite slots in behind this. */
+export interface IEventStore {
+  append(e: Omit<GameEvent, "id" | "branch">): GameEvent;
+  rebranch(eventId: number, newId: string): void;
+  activeBranch(): string;
+  timeline(): GameEvent[];
+  visibleTo(charId: string): GameEvent[];
+  toJSONL(): string;
+  /** Snapshots are a derived cache keyed to event ids — never events
+   *  themselves, never exported, always regenerable from the log. */
+  saveSnapshot(eventId: number, state: unknown): void;
+  nearestSnapshot(timeline: GameEvent[]): Snapshot | null;
+}
+
 interface Branch { id: string; parent: string | null; cutAt: number | null }
 
-export class EventStore {
+export class EventStore implements IEventStore {
   private events: GameEvent[] = [];
   private branches = new Map<string, Branch>([["main", { id: "main", parent: null, cutAt: null }]]);
   private active = "main";
   private nextId = 1;
+  private snapshots = new Map<number, string>(); // eventId -> serialized state
 
   append(e: Omit<GameEvent, "id" | "branch">): GameEvent {
     const ev: GameEvent = { id: this.nextId++, branch: this.active, ...e };
@@ -57,6 +76,19 @@ export class EventStore {
     return this.timeline().filter(e =>
       e.visibility === "public" ||
       (Array.isArray(e.visibility) && e.visibility.includes(charId)));
+  }
+
+  saveSnapshot(eventId: number, state: unknown): void {
+    this.snapshots.set(eventId, JSON.stringify(state));
+  }
+
+  /** Latest snapshot whose event id lies on the given timeline — a snapshot
+   *  taken past a rewind cut is automatically invisible to the new branch. */
+  nearestSnapshot(timeline: GameEvent[]): Snapshot | null {
+    const ids = new Set(timeline.map(e => e.id));
+    let best = -1;
+    for (const id of this.snapshots.keys()) if (id > best && ids.has(id)) best = id;
+    return best === -1 ? null : { eventId: best, state: JSON.parse(this.snapshots.get(best)!) };
   }
 
   toJSONL(): string { return this.events.map(e => JSON.stringify(e)).join("\n"); }

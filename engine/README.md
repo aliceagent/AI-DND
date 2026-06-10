@@ -1,10 +1,11 @@
-# Hermys Engine — Phase 1 skeleton (exit tests passing)
+# Hermys Engine — Phase 1 production (all gates passing)
 
 The deterministic core from the build plan, runnable today:
 
 ```bash
 npm install
-npx tsx --test test/skirmish.test.ts   # the Phase 1 exit gate — 5/5 passing
+npm test                               # every gate — the original five plus Phase 1 breadth
+npx tsx --test test/skirmish.test.ts   # the original Phase 1 exit gate alone
 npx tsx demo.ts 1234 5678              # watch a seeded skirmish; GM view vs a player Box view
 ```
 
@@ -31,36 +32,56 @@ npx tsx demo.ts 1234 5678              # watch a seeded skirmish; GM view vs a p
    opens a new branch cut at the event; folds follow the active lineage;
    the abandoned branch stays in the raw log for audit. Test: `rewind`.
 
-## What production Phase 1 adds (shapes are final, breadth is not)
+## What production Phase 1 added (landed, gated)
 
-- **Rules breadth:** the SRD 5.2 core beyond attack/damage — checks & saves
-  with hidden DCs (the `check_called` / `check_resolved` events from
-  `schemas/event.schema.json`), conditions with mechanical effects
-  (prone ⇒ melee advantage, etc.), death saves, spell slots, rests,
-  concentration. The 2024 surprise rule (initiative disadvantage, not a
-  lost round) lands here.
-- **Storage:** swap the in-memory store for SQLite (same `EventStore`
-  interface; JSONL import/export kept for portability and the leak-audit
-  replay).
-- **Snapshots:** periodic state snapshots keyed to event ids so long
-  campaigns fold from the nearest snapshot, not from event 1.
-- **Character model:** full SRD 5.2 build (class/species/background),
-  derived stats computed not stored, inventory/slots/goals per the
-  build-plan data model.
-- **Tool surface:** the typed command API here becomes the LLM tool schema
-  the Director calls in Phase 2 (`resolve_check`, `apply_damage`,
-  `advance_initiative`, `reveal_fact`, `set_scene`, `query_state`).
+- **Checks & saves with hidden DCs** per `schemas/event.schema.json`:
+  `check_called` is public *without* the DC (modifier included — the Box
+  roll pad pre-loads from it); a gm-visible companion commits the DC
+  before any die is rolled (auditably un-fudgeable); `roll_reported`
+  carries the player's dice; `check_resolved` lands twice — gm with the
+  DC, public without. NPC/secret checks (`engineCheck`) and passive
+  checks never touch a player view at all.
+- **Conditions with mechanical effects** (prone, restrained, frightened,
+  unconscious): effects are pure functions over state
+  (`src/conditions.ts`) folded into the *effective advantage recorded on
+  the event*, so replay never re-derives a rule. 2024 stacking: any adv +
+  any dis cancel.
+- **Death saves** (public table drama, reported rolls): three failures
+  dead, three successes stable, nat 1 double, nat 20 up at 1 hp, damage
+  while down is a failure (crit two, massive death).
+- **2024 surprise**: initiative disadvantage recorded on
+  `initiative_rolled`; nobody ever loses a round.
+- **Spell slots + rests**: `castSpell` throws when the pool is dry (the
+  engine, never the model, is the bookkeeper); slot events are visible
+  only to the caster; long rests restore via the fold; short-rest hit
+  dice heal from the player's reported roll.
+- **SQLite** (`src/sqlite.ts`, better-sqlite3) behind the same
+  `IEventStore` interface — byte-identical JSONL export, branch-aware,
+  durable across reopen. JSONL import/export retained on both stores.
+- **Snapshots keyed to event ids**: `state()` folds from the nearest
+  snapshot on the active lineage; a rewind cutting earlier invalidates it
+  naturally. Cache, not truth — never exported.
+
+Still deliberately deferred: concentration, full SRD character builds
+(class/species/background), inventory/goals — they ride in with Phase 2+
+needs.
 
 ## File map
 
 ```
-src/rng.ts      seeded RNG, dice exprs, adv/dis d20
-src/store.ts    branch-aware append-only event store + visibility query
-src/srd.ts      SRD 5.2 data layer (kobold + 4 PC archetypes for the gate test)
-src/state.ts    pure fold: events -> GameState
-src/engine.ts   command API: join/initiative/attacks/damage/reveal/rewind
-test/skirmish.test.ts   the Phase 1 exit gate
-demo.ts         human-readable seeded skirmish, GM view vs player view
+src/rng.ts         seeded RNG, dice exprs, adv/dis d20
+src/store.ts       IEventStore + in-memory branch-aware store + visibility query
+src/sqlite.ts      SQLite IEventStore (production), byte-identical JSONL
+src/srd.ts         SRD 5.2 data layer: skills, modifiers, kobold + 4 PC archetypes
+src/state.ts       pure fold: events -> GameState (snapshot-resumable)
+src/conditions.ts  mechanical effects of conditions as pure state functions
+src/engine.ts      command API: join/initiative/attacks/checks/saves/death saves/
+                   conditions/slots/rests/reveal/rewind/snapshot
+test/skirmish.test.ts   the original Phase 1 exit gate (untouched, green forever)
+test/ambush.test.ts     the second scripted scenario: surprise, hidden DCs,
+                        conditions, a PC down and saved, slots, long rest
+test/*.test.ts          one gate file per mechanic
+demo.ts            human-readable seeded skirmish, GM view vs player view
 ```
 
 ## Next (Phase 2 entry)
