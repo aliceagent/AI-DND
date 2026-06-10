@@ -1,0 +1,22 @@
+# The gateway: WebSocket hub + PWA over mkcert TLS. Same code that ran the
+# Mac demo — only the env changes (HERMYS_MEDIA=spark, HERMYS_DM=brain).
+[Unit]
+Description=Hermys orchestrator (hub + PWA)
+After=hermys-litellm.service
+
+[Service]
+User=hermys
+WorkingDirectory=/opt/hermys/apps/orchestrator
+Environment=HERMYS_PORT=8443
+Environment=HERMYS_TLS_DIR=/opt/hermys/apps/orchestrator/certs
+Environment=HERMYS_DB=/var/lib/hermys/session.db
+Environment=HERMYS_MEDIA=spark
+Environment=HERMYS_DM=brain
+Environment=HERMYS_LLM_BASE_URL=http://127.0.0.1:4000/v1
+Environment=HERMYS_LLM_MODEL=gpt-oss-120b
+ExecStart=/usr/bin/npx tsx src/server.ts
+Restart=on-failure
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target

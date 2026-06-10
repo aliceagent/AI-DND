@@ -1,15 +1,13 @@
 {
-  "name": "hermys-brain",
+  "name": "hermys-ingest",
   "version": "1.0.0",
-  "description": "Phase 2: the two-tier brain (Director/Narrator) over the deterministic engine — text only",
+  "description": "Phase 5 scaffold: segments → draft beats/entity-cards into packs/ (gitignored), schema-validated, human-approved on the Prep Bench",
   "private": true,
   "type": "module",
   "scripts": {
     "test": "tsx --test test/*.test.ts",
     "typecheck": "tsc --noEmit",
-    "hotseat": "tsx src/hotseat.ts",
-    "redteam": "tsx src/redteam.ts",
-    "preflight": "tsx src/preflight.ts"
+    "ingest": "tsx src/cli.ts"
   },
   "dependencies": {
     "ajv": "^8.17.1"

@@ -27,6 +27,9 @@ measurement, not scaffolding. Run in order; each item names its gate.
 
 ## 2. Phase 2 live gates (afternoon)
 
+5b. `cd brain && npm run preflight` — endpoint reachable, model listed,
+   one generation, one tool-call round trip, with latencies. Fix failures
+   here before touching anything downstream.
 6. Hotseat smoke: `cd brain && npm run hotseat` — play a few honest turns of
    the Moonlit Cellar; confirm tool-calling, the check→roll→resolve loop,
    and canon capture against the real Director route.

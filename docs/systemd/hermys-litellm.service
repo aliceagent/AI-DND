@@ -1,0 +1,17 @@
+# LiteLLM router: "director" (high reasoning effort) and "narrator" (lower)
+# are routes over the same llama.cpp upstream — model separation is config,
+# the safety boundary is the context assembler (brain/src/context.ts).
+[Unit]
+Description=Hermys LiteLLM router (director/narrator routes)
+After=hermys-llama.service
+Requires=hermys-llama.service
+
+[Service]
+User=hermys
+WorkingDirectory=/opt/hermys
+ExecStart=/usr/bin/env litellm --config /opt/hermys/litellm.yaml --port 4000
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
