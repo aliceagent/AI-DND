@@ -15,6 +15,21 @@ jobs:
       - run: npx tsc --noEmit
       - run: npx tsx --test test/*.test.ts
 
+  brain:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - run: npm install
+        working-directory: engine   # brain imports engine sources
+      - run: npm install
+        working-directory: brain
+      - run: npx tsc --noEmit
+        working-directory: brain
+      - run: npx tsx --test test/*.test.ts
+        working-directory: brain
+
   schemas:
     runs-on: ubuntu-latest
     steps:
@@ -36,4 +51,4 @@ jobs:
       - name: no pack content in version control, no direct pack imports
         run: |
           test -z "$(git ls-files packs | grep -v packs/README.md)" || { echo 'pack content committed!'; exit 1; }
-          ! grep -rn "packs/hotdq" engine/src --include='*.ts' || { echo 'direct pack import in engine'; exit 1; }
+          ! grep -rn "packs/hotdq" engine/src brain/src --include='*.ts' || { echo 'direct pack import in engine/brain'; exit 1; }

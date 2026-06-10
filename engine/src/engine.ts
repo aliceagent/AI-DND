@@ -440,6 +440,25 @@ export class Engine {
     this.emit("fact_revealed", to === "party" ? "public" : to, { factId, to, text });
   }
 
+  // ------------------------------------------------- session & narration
+  /** A player's spoken/typed declaration, on the record (public). */
+  declare(actorId: string, text: string): GameEvent {
+    return this.emit("declaration", "public", { text }, actorId);
+  }
+
+  /** Pip's delivered prose enters the log — the revealed transcript IS the
+   *  event stream, so recaps and the Narrator context share one source. */
+  recordNarration(text: string, beatId?: string): GameEvent {
+    return this.emit("narration_delivered", "public",
+      { text, ...(beatId ? { beatId } : {}) }, "pip");
+  }
+
+  /** A Narrator invention the Director accepted into the world (decision
+   *  13 refinement): captured, never silently drifted. */
+  ratifyCanon(assertion: string, source = "narrator", causes?: number): GameEvent {
+    return this.emit("canon_ratified", "public", { assertion, source }, "tally", causes);
+  }
+
   // -------------------------------------------------------------- rewind
   rewindTo(eventId: number, branchId: string): void {
     this.store.rebranch(eventId, branchId);

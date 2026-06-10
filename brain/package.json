@@ -1,0 +1,21 @@
+{
+  "name": "hermys-brain",
+  "version": "1.0.0",
+  "description": "Phase 2: the two-tier brain (Director/Narrator) over the deterministic engine — text only",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "tsx --test test/*.test.ts",
+    "typecheck": "tsc --noEmit",
+    "hotseat": "tsx src/hotseat.ts",
+    "redteam": "tsx src/redteam.ts"
+  },
+  "dependencies": {
+    "ajv": "^8.17.1"
+  },
+  "devDependencies": {
+    "@types/node": "^25.9.2",
+    "tsx": "^4.22.4",
+    "typescript": "^6.0.3"
+  }
+}
