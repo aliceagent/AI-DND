@@ -12,8 +12,9 @@ import { Engine } from "../../../engine/src/engine.js";
 import type { GameEvent } from "../../../engine/src/store.js";
 import type { DungeonMaster } from "./dm.js";
 import type { MediaService } from "./media.js";
+import { InterviewSession, type InterviewInput } from "./interview.js";
 
-export type Role = "box" | "screen" | "host";
+export type Role = "box" | "screen" | "host" | "creator";
 
 export interface ClientConn { send(msg: unknown): void }
 
@@ -23,6 +24,7 @@ interface Client {
   role: Role;
   characterId?: string;
   cursor: number;          // last event id delivered
+  interview?: InterviewSession;
 }
 
 export class SessionHub {
@@ -38,8 +40,17 @@ export class SessionHub {
   // ---------------------------------------------------------------- joins
   join(id: string, conn: ClientConn, opts: { role: Role; characterId?: string }): void {
     if (opts.role === "box" && !opts.characterId) throw new Error("box join needs characterId");
+    if (opts.role === "box" && !this.engine.state().combatants[opts.characterId!])
+      throw new Error(`unknown character: ${opts.characterId}`); // rebind is to the character
     const client: Client = { id, conn, role: opts.role, characterId: opts.characterId, cursor: 0 };
     this.clients.set(id, client);
+    if (opts.role === "creator") {
+      client.interview = new InterviewSession(cid => !!this.engine.state().combatants[cid]);
+      this.sendTo(client, { type: "joined", role: "creator", media: this.media.kind });
+      this.sendTo(client, { type: "interview_state", ...client.interview.state });
+      this.broadcastRoster();
+      return;
+    }
     this.sendTo(client, { type: "joined", role: opts.role, characterId: opts.characterId,
       media: this.media.kind });
     this.flushTo(client); // full visible history on join — late phones catch up
@@ -99,6 +110,34 @@ export class SessionHub {
           const narration = await this.dm.afterRoll(this.engine, checkId);
           await this.deliver(narration);
         });
+        return;
+      }
+      case "interview": {
+        if (client.role !== "creator" || !client.interview)
+          throw new Error("creator role required");
+        const state = client.interview.handle(msg.input as InterviewInput);
+        if (client.interview.done) {
+          // commit: the engine validates legality one final, authoritative time
+          const session = client.interview;
+          await this.enqueueTurn(async () => {
+            const sheet = this.engine.createCharacter(session.build);
+            this.engine.recordBackstory(session.build.id, session.backstory);
+            // rebind: the connection becomes this character's Box (binding is
+            // to the character — any device may log back into it later)
+            client.role = "box";
+            client.characterId = session.build.id;
+            client.interview = undefined;
+            client.cursor = 0;
+            this.sendTo(client, { type: "character_sealed", characterId: session.build.id,
+              sheet: { name: sheet.name, class: sheet.class, species: sheet.species } });
+            this.sendTo(client, { type: "joined", role: "box", characterId: session.build.id,
+              media: this.media.kind });
+            this.flushAll();
+            this.broadcastRoster();
+          });
+          return;
+        }
+        this.sendTo(client, { type: "interview_state", ...state });
         return;
       }
       case "xcard": {
