@@ -5,6 +5,7 @@
   import { backdrop, sigil } from "$lib/palettes";
   import { a11y, motionReduced } from "$lib/a11y";
   import A11ySheet from "$lib/A11ySheet.svelte";
+  import MiniMap from "$lib/MiniMap.svelte";
   import { onMount, onDestroy } from "svelte";
 
   let audioOn = $state(false);
@@ -21,6 +22,9 @@
   /** Bracketed visual twin for every sound cue (audio/visual parity). */
   let sfxCue: string | null = $state(null);
   let sfxTimer: ReturnType<typeof setTimeout> | null = null;
+  /** Map inset: shown briefly on travel so the room re-orients. */
+  let mapInset = $state(false);
+  let mapTimer: ReturnType<typeof setTimeout> | null = null;
 
   function cue(text: string) {
     sfxCue = text;
@@ -55,6 +59,9 @@
           cue(`[arriving — ${e.payload.name}]`);
           if (establishingTimer) clearTimeout(establishingTimer);
           establishingTimer = setTimeout(() => (establishing = null), reducedMotion ? 2500 : 5000);
+          mapInset = true;
+          if (mapTimer) clearTimeout(mapTimer);
+          mapTimer = setTimeout(() => (mapInset = false), 10000);
         }
         if (e.type === "check_resolved" && e.payload?.outcome) {
           if (mixer.running) mixer.sting(e.payload.outcome === "success");
@@ -165,6 +172,12 @@
   <div class="sfxcue" class:hc={$a11y.highContrast}>{sfxCue}</div>
 {/if}
 
+{#if mapInset && $scene}
+  <div class="mapinset">
+    <MiniMap visited={$scene.visited} currentId={$scene.location_id} glow={bd.glow} />
+  </div>
+{/if}
+
 {#if $a11y.captions && caption}
   <div class="captions" class:large={$a11y.captionSize === "large"} class:hc={$a11y.highContrast}
        role="region" aria-live="polite" aria-label="captions">
@@ -220,6 +233,10 @@
   .captions.large { font-size: 1.9em; }
   .captions.hc { background: #000; border-color: #fff; color: #fff; }
   .captions.hc b { color: #ffe9a8; }
+  .mapinset { position: fixed; right: 1.2rem; bottom: 5.4rem; z-index: 30;
+    width: 15rem; aspect-ratio: 10 / 7; background: #14131cd9;
+    border: 1px solid #353044; border-radius: 14px; padding: 0.5rem;
+    backdrop-filter: blur(6px); animation: rise 0.4s ease-out; }
   .sfxcue { position: fixed; right: 1.2rem; top: 3.6rem; z-index: 50;
     color: #9b93ab; font-style: italic; font-size: 1.05em;
     background: #14131cb8; border-radius: 8px; padding: 0.25em 0.7em; }

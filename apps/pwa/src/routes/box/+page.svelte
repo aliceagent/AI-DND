@@ -4,6 +4,7 @@
   import { sigil } from "$lib/palettes";
   import { a11y, vibrate, HAPTIC } from "$lib/a11y";
   import A11ySheet from "$lib/A11ySheet.svelte";
+  import MiniMap from "$lib/MiniMap.svelte";
   import { Ptt, type PttState } from "$lib/ptt";
   import { onMount, onDestroy } from "svelte";
 
@@ -24,7 +25,7 @@
   onMount(() => listeners.add(onMsg));
   onDestroy(() => listeners.delete(onMsg));
 
-  type Tab = "talk" | "sheet" | "gear" | "magic" | "journal";
+  type Tab = "talk" | "sheet" | "gear" | "magic" | "journal" | "map";
   let tab: Tab = $state("talk");
   function switchTab(t: Tab) {
     tab = t;
@@ -140,7 +141,7 @@
 {/each}
 
 <nav class="tabs">
-  {#each ["talk", "sheet", "gear", "magic", "journal"] as t}
+  {#each ["talk", "sheet", "gear", "magic", "journal", "map"] as t}
     <button class:active={tab === t} onclick={() => switchTab(t as Tab)}>{t}</button>
   {/each}
 </nav>
@@ -232,6 +233,16 @@
     {/each}
   </section>
 
+{:else if tab === "map"}
+  <section class="panel mappanel">
+    {#if $scene}
+      <MiniMap visited={$scene.visited} currentId={$scene.location_id} />
+      <p class="hint">you are at {$scene.name} — the dark holds what you haven't walked</p>
+    {:else}
+      <p class="hint">No ground beneath your feet yet.</p>
+    {/if}
+  </section>
+
 {:else if tab === "journal"}
   <section class="panel">
     {#each $journal as entry (entry.id)}
@@ -290,6 +301,8 @@
   .floorline { color: #9b93ab; font-size: 0.85em; }
   .pace { display: flex; gap: 0.5rem; align-items: center; color: #6f687f; font-size: 0.85em; }
   .panel { display: flex; flex-direction: column; gap: 0.55rem; }
+  .mappanel { background: #16141f; border: 1px solid #353044; border-radius: 14px;
+    padding: 0.8rem; aspect-ratio: 10 / 7; }
   .abilities { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.5rem; }
   .ab { background: #1d1b27; border: 1px solid #353044; border-radius: 10px;
     padding: 0.5rem; display: flex; flex-direction: column; align-items: center; }
