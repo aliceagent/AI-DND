@@ -46,5 +46,7 @@ voice players hear) → streaming TTS over a Web Audio mix on the shared screen,
 while each phone shows exactly — and only — what that character knows.
 
 ---
-*Rules content derives from the System Reference Document 5.2 by Wizards of
-the Coast LLC, licensed under CC-BY-4.0.*
+*Rules content derives from the System Reference Document 5.2.1 by Wizards
+of the Coast LLC, licensed under CC-BY-4.0 — full required notice and scope
+in [ATTRIBUTION.md](ATTRIBUTION.md). Unofficial fan/engine work; not
+affiliated with or endorsed by Wizards of the Coast.*
