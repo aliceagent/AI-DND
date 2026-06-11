@@ -1,17 +1,24 @@
 <script lang="ts">
   import { goto } from "$app/navigation";
-  import { joined, transcript, narrations, floor, roster, listeners } from "$lib/client";
+  import { joined, transcript, narrations, floor, roster, listeners, scene } from "$lib/client";
   import { mixer } from "$lib/mixer";
+  import { backdrop, sigil } from "$lib/palettes";
   import { onMount, onDestroy } from "svelte";
 
   let audioOn = $state(false);
   let volume = $state(0.8);
   let reveal: { name: string; asset: string } | null = $state(null);
   let revealTimer: ReturnType<typeof setTimeout> | null = null;
+  /** The establishing moment: scene_set → full-bleed arrival card. */
+  let establishing: { name: string; locationId: string; mood: string | null; palette: string | null } | null = $state(null);
+  let establishingTimer: ReturnType<typeof setTimeout> | null = null;
+  const reducedMotion = typeof matchMedia !== "undefined"
+    && matchMedia("(prefers-reduced-motion: reduce)").matches;
 
   $effect(() => { if (!$joined) goto("/"); });
 
   const latest = $derived($narrations.at(-1)?.text ?? "");
+  const bd = $derived(backdrop($scene?.palette));
 
   function onMessage(msg: any) {
     if (msg.type === "narration" && mixer.running) {
@@ -20,6 +27,13 @@
     }
     if (msg.type === "events")
       for (const e of msg.events) {
+        if (e.type === "scene_set") { // the arrival is a produced moment
+          establishing = { name: e.payload.name, locationId: e.payload.location_id,
+            mood: e.payload.mood ?? null, palette: e.payload.palette ?? null };
+          if (mixer.running) mixer.chime();
+          if (establishingTimer) clearTimeout(establishingTimer);
+          establishingTimer = setTimeout(() => (establishing = null), reducedMotion ? 2500 : 5000);
+        }
         if (e.type === "check_resolved" && e.payload?.outcome && mixer.running)
           mixer.sting(e.payload.outcome === "success");
         if (e.type === "portrait_attached") { // the "this is you" moment
@@ -45,6 +59,24 @@
     if (file) await mixer.playMusic(file);
   }
 </script>
+
+<div class="backdrop" style={`background-image:${bd.gradient}`}></div>
+
+{#if $scene}
+  <div class="locbanner" style={`--glow:${bd.glow}`}>
+    <span class="sig">{sigil($scene.location_id)}</span> {$scene.name}
+    {#if $scene.mood}<span class="mood">{$scene.mood}</span>{/if}
+  </div>
+{/if}
+
+{#if establishing}
+  {@const ebd = backdrop(establishing.palette)}
+  <div class="establishing" class:rm={reducedMotion} style={`background-image:${ebd.gradient}; --glow:${ebd.glow}`}>
+    <span class="esigil">{sigil(establishing.locationId)}</span>
+    <h1>{establishing.name}</h1>
+    {#if establishing.mood}<p class="emood">{establishing.mood.replace(/-/g, " ")}</p>{/if}
+  </div>
+{/if}
 
 <div class="stage">
   {#if reveal}
@@ -82,6 +114,28 @@
 </footer>
 
 <style>
+  .backdrop { position: fixed; inset: 0; z-index: -1; opacity: 0.85;
+    transition: background-image 1.2s ease; }
+  .locbanner { position: fixed; top: 0.9rem; left: 1.1rem; z-index: 5;
+    background: #14131ccc; border: 1px solid #353044; border-radius: 999px;
+    padding: 0.35em 1em; color: #e8dfc8; backdrop-filter: blur(6px);
+    display: flex; gap: 0.5em; align-items: center; }
+  .locbanner .sig { color: var(--glow); }
+  .locbanner .mood { color: #9b93ab; font-size: 0.82em; font-style: italic; }
+  .establishing { position: fixed; inset: 0; z-index: 40;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    gap: 1rem; animation: estab-in 1.4s ease-out, estab-out 0.9s ease-in 4.1s forwards; }
+  .establishing.rm { animation: none; }
+  .esigil { font-size: 4.5em; color: var(--glow); text-shadow: 0 0 42px var(--glow);
+    animation: sigil-rise 2.2s ease-out; }
+  .establishing.rm .esigil { animation: none; }
+  .establishing h1 { font-size: 3.2em; letter-spacing: 0.06em; margin: 0;
+    color: #f0ead8; text-shadow: 0 2px 30px #000c; text-align: center; }
+  .emood { color: var(--glow); letter-spacing: 0.25em; text-transform: uppercase;
+    font-size: 0.95em; margin: 0; }
+  @keyframes estab-in { from { opacity: 0; } to { opacity: 1; } }
+  @keyframes estab-out { to { opacity: 0; visibility: hidden; } }
+  @keyframes sigil-rise { from { transform: translateY(14px); opacity: 0; } }
   .stage { min-height: 70dvh; display: flex; flex-direction: column; justify-content: center; gap: 2rem; }
   .reveal { display: flex; align-items: center; gap: 1.2rem; background: #1d1b27;
     border: 1px solid #5d5378; border-radius: 16px; padding: 1rem 1.4rem;

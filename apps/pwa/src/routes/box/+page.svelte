@@ -1,6 +1,7 @@
 <script lang="ts">
   import { goto } from "$app/navigation";
-  import { joined, sheet, journal, transcript, rollRequests, floor, send, reportRoll, label, mediaKind } from "$lib/client";
+  import { joined, sheet, journal, transcript, rollRequests, floor, send, reportRoll, label, mediaKind, scene } from "$lib/client";
+  import { sigil } from "$lib/palettes";
   import { Ptt, type PttState } from "$lib/ptt";
 
   type Tab = "talk" | "sheet" | "gear" | "magic" | "journal";
@@ -61,6 +62,10 @@
     : []);
   const inQueue = $derived($joined?.characterId != null && $floor.queue.includes($joined.characterId));
 </script>
+
+{#if $scene}
+  <div class="where"><span>{sigil($scene.location_id)}</span> {$scene.name}</div>
+{/if}
 
 {#if $sheet}
   <header>
@@ -216,6 +221,8 @@
 {/if}
 
 <style>
+  .where { color: #cdbf9a; font-size: 0.88em; margin-bottom: 0.5rem;
+    display: flex; gap: 0.45em; align-items: center; }
   header { display: flex; justify-content: space-between; align-items: start; }
   .who { display: flex; gap: 0.8rem; align-items: center; }
   .face { width: 52px; height: 52px; border-radius: 12px; object-fit: cover; }

@@ -184,6 +184,18 @@ export const journal = derived([events, joined], ([$events, $joined]) => {
   return out;
 });
 
+/** Where the party is — folded from scene_set; drives banners and maps. */
+export const scene = derived(events, $events => {
+  let cur: any = null;
+  const visited: string[] = [];
+  for (const e of $events)
+    if (e.type === "scene_set") {
+      cur = e.payload;
+      if (!visited.includes(e.payload.location_id)) visited.push(e.payload.location_id);
+    }
+  return cur ? { ...cur, visited } : null;
+});
+
 /** Shared transcript (declarations + narration) from the event slice. */
 export const transcript = derived(events, $events =>
   $events
