@@ -25,6 +25,14 @@
   /** Map inset: shown briefly on travel so the room re-orients. */
   let mapInset = $state(false);
   let mapTimer: ReturnType<typeof setTimeout> | null = null;
+  /** X-card: a calm, unhurried reset — never jarring, never attributed. */
+  let xcardMoment = $state(false);
+  let xcardTimer: ReturnType<typeof setTimeout> | null = null;
+  /** Ambient drift: deterministic particle field, palette-tinted. */
+  const PARTICLES = Array.from({ length: 14 }, (_, i) => ({
+    left: ((i * 37) % 100), delay: -((i * 1.7) % 18), dur: 14 + (i % 5) * 3,
+    size: 2 + (i % 3),
+  }));
 
   function cue(text: string) {
     sfxCue = text;
@@ -38,6 +46,12 @@
   const bd = $derived(backdrop($scene?.palette));
 
   function onMessage(msg: any) {
+    if (msg.type === "xcard_rewound") {
+      xcardMoment = true;
+      cue("[the thread of fate frays and reweaves]");
+      if (xcardTimer) clearTimeout(xcardTimer);
+      xcardTimer = setTimeout(() => (xcardMoment = false), reducedMotion ? 2500 : 5000);
+    }
     if (msg.type === "narration") {
       if (mixer.running) {
         mixer.duck(msg.durationMs);
@@ -101,6 +115,21 @@
 </script>
 
 <div class="backdrop" style={`background-image:${bd.gradient}`}></div>
+
+{#if !reducedMotion}
+  <div class="drift" aria-hidden="true">
+    {#each PARTICLES as p, i (i)}
+      <span style={`left:${p.left}%; animation-delay:${p.delay}s; animation-duration:${p.dur}s;
+        width:${p.size}px; height:${p.size}px; background:${bd.particle}`}></span>
+    {/each}
+  </div>
+{/if}
+
+{#if xcardMoment}
+  <div class="xcard-moment" class:rm={reducedMotion}>
+    <p>the thread of fate frays and reweaves…</p>
+  </div>
+{/if}
 
 {#if $scene}
   <div class="locbanner" style={`--glow:${bd.glow}`}>
@@ -190,6 +219,23 @@
 <style>
   .backdrop { position: fixed; inset: 0; z-index: -1; opacity: 0.85;
     transition: background-image 1.2s ease; }
+  .drift { position: fixed; inset: 0; z-index: 0; pointer-events: none; overflow: hidden; }
+  .drift span { position: absolute; bottom: -8px; border-radius: 50%; opacity: 0.3;
+    animation: drift-up linear infinite; }
+  @keyframes drift-up {
+    from { transform: translateY(0) translateX(0); opacity: 0; }
+    12% { opacity: 0.35; }
+    88% { opacity: 0.25; }
+    to { transform: translateY(-105vh) translateX(4vw); opacity: 0; }
+  }
+  .xcard-moment { position: fixed; inset: 0; z-index: 80; background: #050409f2;
+    display: flex; align-items: center; justify-content: center;
+    animation: xfade 5s ease forwards; }
+  .xcard-moment.rm { animation: none; }
+  .xcard-moment p { color: #9b93ab; font-size: 1.6em; font-style: italic;
+    letter-spacing: 0.06em; }
+  @keyframes xfade { 0% { opacity: 0; } 12% { opacity: 1; } 78% { opacity: 1; } 100% { opacity: 0; } }
+  .stage { position: relative; z-index: 1; }
   .locbanner { position: fixed; top: 0.9rem; left: 1.1rem; z-index: 5;
     background: #14131ccc; border: 1px solid #353044; border-radius: 999px;
     padding: 0.35em 1em; color: #e8dfc8; backdrop-filter: blur(6px);
@@ -253,7 +299,8 @@
     display: flex; align-items: center; justify-content: center; font-size: 2.2em; }
   .thisis { font-size: 1.4em; color: #e8dfc8; margin: 0; text-transform: capitalize; }
   @keyframes rise { from { opacity: 0; transform: translateY(10px); } }
-  .narration { font-size: 1.7em; line-height: 1.5; color: #e8dfc8; text-wrap: balance; }
+  .narration { font-size: clamp(1.35em, 3.2vw, 2.3em); line-height: 1.5;
+    color: #e8dfc8; text-wrap: balance; }
   .transcript { color: #8d8599; font-size: 0.95em; display: flex; flex-direction: column; gap: 0.3rem; }
   .transcript p { margin: 0; }
   .transcript .pip { color: #b3a87f; }

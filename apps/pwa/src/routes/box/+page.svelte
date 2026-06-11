@@ -15,11 +15,25 @@
     if (msg.type === "roll_request") vibrate(HAPTIC.rollCall, $a11y);
     if (msg.type === "events")
       for (const e of msg.events) {
-        if (e.type === "fact_revealed" && Array.isArray(e.visibility))
+        if (e.type === "fact_revealed" && Array.isArray(e.visibility)) {
           vibrate(HAPTIC.privateReveal, $a11y);
+          revealBanner = e.payload?.text ?? "…something only you would catch.";
+          if (revealTimer) clearTimeout(revealTimer);
+          revealTimer = setTimeout(() => (revealBanner = null), 9000);
+        }
         if (e.type === "turn_advanced" && e.payload?.active === $joined?.characterId)
           vibrate(HAPTIC.yourTurn, $a11y);
       }
+  }
+
+  function pickDie(checkId: number, value: number, needed: number) {
+    const picks = rollPicks[checkId] ?? [];
+    if (picks.length >= needed) return;
+    rollPicks[checkId] = [...picks, value];
+    if (rollPicks[checkId].length === needed) {
+      reportRoll(checkId, rollPicks[checkId]);
+      delete rollPicks[checkId];
+    }
   }
   const myTurn = $derived($combat.started && !$combat.over && $combat.active === $joined?.characterId);
   onMount(() => listeners.add(onMsg));
@@ -35,7 +49,10 @@
   let text = $state("");
   let ptt = new Ptt();
   let pttState: PttState = $state({ recording: false, micOk: null, error: null });
-  let rollInputs: Record<number, string> = $state({});
+  let rollPicks: Record<number, number[]> = $state({});
+  /** Private reveals deserve a moment, not a toast. */
+  let revealBanner: string | null = $state(null);
+  let revealTimer: ReturnType<typeof setTimeout> | null = null;
 
   $effect(() => { if (!$joined) goto("/"); });
 
@@ -60,13 +77,6 @@
     text = "";
   }
 
-  function submitRoll(checkId: number, advantage: string) {
-    const dice = (rollInputs[checkId] ?? "").split(/[,\s]+/).filter(Boolean).map(Number);
-    const needed = advantage === "none" ? 1 : 2;
-    if (dice.length < needed || dice.some(d => !(d >= 1 && d <= 20))) return;
-    reportRoll(checkId, dice.slice(0, needed));
-    delete rollInputs[checkId];
-  }
 
   function xcard() {
     if (confirm("X-card: rewind this content? It's anonymous.")) send({ type: "xcard" });
@@ -129,14 +139,30 @@
   <div class="yourturn">⚔ YOUR TURN<span> — round {$combat.round}</span></div>
 {/if}
 
+{#if revealBanner}
+  <div class="reveal-banner" role="status">
+    <span class="eye">◉</span>
+    <div><b>Only you notice…</b><p>{revealBanner}</p></div>
+  </div>
+{/if}
+
 {#each $rollRequests as r (r.checkId)}
+  {@const needed = r.advantage === "none" ? 1 : 2}
+  {@const picks = rollPicks[r.checkId] ?? []}
   <div class="rollpad">
     <strong>Roll d20 — {label(r)}</strong>
-    <div class="rollrow">
-      <input inputmode="numeric" placeholder={r.advantage === "none" ? "d20" : "d20, d20"}
-        bind:value={rollInputs[r.checkId]} />
-      <button onclick={() => submitRoll(r.checkId, r.advantage)}>Report</button>
+    {#if needed === 2}
+      <span class="pickstate">{picks.length === 0 ? "tap both dice" : "one more…"} ({picks.join(", ") || "—"})</span>
+    {/if}
+    <div class="dgrid">
+      {#each Array.from({ length: 20 }, (_, i) => i + 1) as v}
+        <button class="die" class:picked={picks.includes(v)}
+          onclick={() => pickDie(r.checkId, v, needed)}>{v}</button>
+      {/each}
     </div>
+    {#if picks.length}
+      <button class="mini" onclick={() => (rollPicks[r.checkId] = [])}>clear</button>
+    {/if}
   </div>
 {/each}
 
@@ -286,8 +312,21 @@
   .tabs button.active { background: #4a3f6b; border-color: #6b5e93; }
   .rollpad { background: #2a2440; border: 1px solid #5d5378; border-radius: 12px;
     padding: 0.9rem; margin: 0.8rem 0; }
-  .rollrow { display: flex; gap: 0.5rem; margin-top: 0.5rem; }
-  .rollrow input { flex: 1; }
+  .pickstate { color: #9b93ab; font-size: 0.85em; display: block; margin-top: 0.2rem; }
+  .dgrid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 0.45rem; margin-top: 0.6rem; }
+  .die { padding: 0.7em 0; font-size: 1.1em; font-weight: 600; border-radius: 10px;
+    background: #1d1b27; }
+  .die:active { background: #4a3f6b; }
+  .die.picked { background: #4a3f6b; border-color: #cdbf9a; }
+  .reveal-banner { display: flex; gap: 0.8rem; align-items: flex-start;
+    background: linear-gradient(135deg, #3a2d18, #2a2440); border: 1px solid #cdbf9a;
+    border-radius: 14px; padding: 0.8rem 1rem; margin-top: 0.7rem;
+    box-shadow: 0 0 24px #cdbf9a22; animation: rise 0.4s ease-out; }
+  .reveal-banner .eye { color: #cdbf9a; font-size: 1.4em; }
+  .reveal-banner b { color: #e8dfc8; }
+  .reveal-banner p { margin: 0.15rem 0 0; color: #d8d2c2; }
+  @keyframes rise { from { opacity: 0; transform: translateY(8px); } }
+  @media (prefers-reduced-motion: reduce) { .reveal-banner { animation: none; } }
   .log { margin: 0.4rem 0 1rem; max-height: 44dvh; overflow-y: auto; display: flex; flex-direction: column; gap: 0.4rem; }
   .log p { margin: 0; }
   .log .pip { color: #cdbf9a; }
