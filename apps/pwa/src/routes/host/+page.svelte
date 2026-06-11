@@ -4,6 +4,11 @@
 
   $effect(() => { if (!$joined) goto("/"); });
 
+  // interview-born party members (only they can level — engine rule)
+  const party = $derived($events
+    .filter(e => e.type === "character_created")
+    .map(e => ({ id: e.payload.id, name: e.payload.name, level: e.payload.level ?? 1 })));
+
   function rewindTo(eventId: number) {
     if (confirm(`Rewind the table to event ${eventId}? Later events move to an excluded branch.`))
       send({ type: "rewind", eventId });
@@ -18,6 +23,11 @@
 <div class="combatctl">
   <button class="mini" onclick={() => send({ type: "start_combat" })}>⚔ start combat</button>
   <button class="mini" onclick={() => send({ type: "advance_turn" })}>next turn →</button>
+  {#each party as p (p.id)}
+    <button class="mini grow" onclick={() => send({ type: "grant_levelup", characterId: p.id })}>
+      ⬆ {p.name}
+    </button>
+  {/each}
 </div>
 
 {#if $tableState}

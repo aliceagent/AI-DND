@@ -29,6 +29,8 @@ export const approvals = writable<{ queue: any[]; decided: any[] }>({ queue: [],
 export const tableState = writable<{ pace: { up: number; down: number; recent: any[] } } | null>(null);
 /** Host-only: gates the Bench HTTP endpoints. */
 export const benchToken = writable<string | null>(null);
+/** A pending level-up offer for THIS box (host-granted). */
+export const levelupOffer = writable<{ characterId: string; toLevel: number; hitDie: number } | null>(null);
 
 /** Raw-message hooks (the screen's mixer subscribes here). */
 export const listeners = new Set<(msg: any) => void>();
@@ -94,6 +96,10 @@ function handle(msg: any): void {
     case "approvals": approvals.set({ queue: msg.queue, decided: msg.decided }); return;
     case "table_state": tableState.set(msg); return;
     case "host_note": toast(msg.text); return;
+    case "levelup_offer": levelupOffer.set(msg); return;
+    case "hero_grows":
+      toast(`${String(msg.characterId).replace(/^pc\./, "")} reaches level ${msg.toLevel}!`);
+      return;
     case "character_sealed":
       interview.set(null);
       toast(`${msg.sheet.name} the ${msg.sheet.species} ${msg.sheet.class} — sealed.`);

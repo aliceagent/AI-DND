@@ -252,3 +252,42 @@ test("table-state vector: telemetry aggregates, spotlight debt finds the quiet p
   // telemetry stays host-side
   assert.equal(rogue.ofType("table_state").length, 0);
 });
+
+test("level-up flow: host grants, the Box chooses, the engine validates, the room hears", async () => {
+  const engine = new Engine(83);
+  const hub = new SessionHub(engine, new EchoDM(), new MockMediaService());
+  const phone = new FakeConn(), host = new FakeConn(), screen = new FakeConn();
+  hub.join("p1", phone, { role: "creator" });
+  hub.join("s1", screen, { role: "screen" });
+  for (const input of [
+    { text: "Brena" }, { choice: "dwarf" }, { choice: "fighter" }, { choice: "soldier" },
+    { abilities: ABILITIES }, { choice: "str+2,con+1" }, { skills: ["perception", "survival"] },
+    { text: "I held the bridge at Marlow ford until the carts were across." },
+    { confirm: true },
+  ]) await hub.handle("p1", { type: "interview", input });
+  hub.join("h1", host, { role: "host" });
+
+  // boxes can't grant; an unoffered level-up is refused
+  await assert.rejects(hub.handle("p1", { type: "grant_levelup", characterId: "pc.brena" }), /host role/);
+  await hub.handle("p1", { type: "levelup", choice: { method: "average" } });
+  assert.match(phone.last("error").error, /no level-up offered/);
+
+  // the grant lands on the right box with the right die
+  await hub.handle("h1", { type: "grant_levelup", characterId: "pc.brena" });
+  const offer = phone.last("levelup_offer");
+  assert.equal(offer.toLevel, 2);
+  assert.equal(offer.hitDie, 10);
+  assert.equal(screen.ofType("levelup_offer").length, 0, "offer leaked to the room");
+
+  // a bad roll is refused but the offer survives; a good one lands
+  await hub.handle("p1", { type: "levelup", choice: { method: "roll", reported: 99 } });
+  assert.match(phone.last("error").error, /outside 1-10/);
+  await hub.handle("p1", { type: "levelup", choice: { method: "roll", reported: 7 } });
+  const c = engine.state().combatants["pc.brena"];
+  assert.equal(c.level, 2);
+  assert.equal(c.maxHp, 12 + 7 + 2); // d10 max + con2, then 7 + con2
+  assert.equal(screen.last("hero_grows").characterId, "pc.brena"); // the room celebrates
+  // the offer is spent
+  await hub.handle("p1", { type: "levelup", choice: { method: "average" } });
+  assert.match(phone.last("error").error, /no level-up offered/);
+});

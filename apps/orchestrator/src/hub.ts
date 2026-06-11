@@ -47,6 +47,7 @@ export class SessionHub {
   private telemetry = new Map<string, { ptt: number; declarations: number; taps: number; lastSeq: number }>();
   private activitySeq = 0;
   private approvals: { kind: "character" | "portrait"; characterId: string; status: "pending" | "approved" | "rejected" }[] = [];
+  private levelOffers = new Map<string, number>();   // characterId -> offered level
 
   constructor(readonly engine: Engine, private dm: DungeonMaster, private media: MediaService,
               private distiller: BlockDistiller = createDistiller(),
@@ -251,6 +252,39 @@ export class SessionHub {
       case "rewind": {
         this.requireHost(client);
         await this.enqueueTurn(async () => this.rewindTo(Number(msg.eventId)));
+        return;
+      }
+      case "grant_levelup": { // the host bestows growth; the engine validates it
+        this.requireHost(client);
+        const charId = String(msg.characterId);
+        const build = this.builds.get(charId);
+        if (!build) throw new Error(`no stored build for ${charId} — only interview-born characters level`);
+        const c = this.engine.state().combatants[charId];
+        if (!c) throw new Error(`unknown character: ${charId}`);
+        const box = [...this.clients.values()].find(x => x.role === "box" && x.characterId === charId);
+        if (!box) { this.sendTo(client, { type: "error", error: `${charId} has no Box connected` }); return; }
+        this.levelOffers.set(charId, c.level + 1);
+        const { CLASSES } = await import("../../../engine/src/character.js");
+        this.sendTo(box, { type: "levelup_offer", characterId: charId,
+          toLevel: c.level + 1, hitDie: CLASSES[build.class].hitDie });
+        return;
+      }
+      case "levelup": { // the Box answers the offer with its HP choice
+        this.requireBox(client);
+        const charId = client.characterId!;
+        const toLevel = this.levelOffers.get(charId);
+        if (!toLevel) { this.sendTo(client, { type: "error", error: "no level-up offered" }); return; }
+        await this.enqueueTurn(async () => {
+          try {
+            this.engine.levelUp(charId, toLevel, msg.choice);
+            this.levelOffers.delete(charId);
+            this.flushAll();
+            this.broadcast({ type: "hero_grows", characterId: charId,
+              toLevel }); // leveling is table knowledge — the room celebrates
+          } catch (e) { // refusal: the offer stands, the Box learns why
+            this.sendTo(client, { type: "error", error: String((e as Error).message) });
+          }
+        });
         return;
       }
       case "start_combat": { // host control until the Director drives it

@@ -1,6 +1,6 @@
 <script lang="ts">
   import { goto } from "$app/navigation";
-  import { joined, sheet, journal, transcript, rollRequests, floor, send, reportRoll, label, mediaKind, scene, listeners, combat } from "$lib/client";
+  import { joined, sheet, journal, transcript, rollRequests, floor, send, reportRoll, label, mediaKind, scene, listeners, combat, levelupOffer } from "$lib/client";
   import { sigil } from "$lib/palettes";
   import { a11y, vibrate, HAPTIC } from "$lib/a11y";
   import A11ySheet from "$lib/A11ySheet.svelte";
@@ -53,6 +53,13 @@
   /** Private reveals deserve a moment, not a toast. */
   let revealBanner: string | null = $state(null);
   let revealTimer: ReturnType<typeof setTimeout> | null = null;
+  let hpMode: "choose" | "roll" = $state("choose");
+
+  function levelup(choice: { method: "average" } | { method: "roll"; reported: number }) {
+    send({ type: "levelup", choice });
+    levelupOffer.set(null);
+    hpMode = "choose";
+  }
 
   $effect(() => { if (!$joined) goto("/"); });
 
@@ -137,6 +144,26 @@
 
 {#if myTurn}
   <div class="yourturn">⚔ YOUR TURN<span> — round {$combat.round}</span></div>
+{/if}
+
+{#if $levelupOffer}
+  <div class="levelup">
+    <strong>⬆ You've grown — level {$levelupOffer.toLevel}</strong>
+    {#if hpMode === "choose"}
+      <p>How does your vitality rise?</p>
+      <div class="lvlrow">
+        <button onclick={() => levelup({ method: "average" })}>take the average</button>
+        <button onclick={() => (hpMode = "roll")}>roll the d{$levelupOffer.hitDie}</button>
+      </div>
+    {:else}
+      <p>Roll your d{$levelupOffer.hitDie} and tap the result:</p>
+      <div class="dgrid">
+        {#each Array.from({ length: $levelupOffer.hitDie }, (_, i) => i + 1) as v}
+          <button class="die" onclick={() => levelup({ method: "roll", reported: v })}>{v}</button>
+        {/each}
+      </div>
+    {/if}
+  </div>
 {/if}
 
 {#if revealBanner}
@@ -318,6 +345,12 @@
     background: #1d1b27; }
   .die:active { background: #4a3f6b; }
   .die.picked { background: #4a3f6b; border-color: #cdbf9a; }
+  .levelup { background: linear-gradient(135deg, #2a2440, #2d4a3a); border: 1px solid #4a7c5f;
+    border-radius: 14px; padding: 0.9rem 1rem; margin-top: 0.7rem;
+    box-shadow: 0 0 24px #4a7c5f33; }
+  .levelup p { margin: 0.4rem 0; color: #b6aec7; }
+  .lvlrow { display: flex; gap: 0.6rem; }
+  .lvlrow button { flex: 1; padding: 0.8em; }
   .reveal-banner { display: flex; gap: 0.8rem; align-items: flex-start;
     background: linear-gradient(135deg, #3a2d18, #2a2440); border: 1px solid #cdbf9a;
     border-radius: 14px; padding: 0.8rem 1rem; margin-top: 0.7rem;
