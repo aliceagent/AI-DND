@@ -5,6 +5,10 @@
 
   type Tab = "talk" | "sheet" | "gear" | "magic" | "journal";
   let tab: Tab = $state("talk");
+  function switchTab(t: Tab) {
+    tab = t;
+    send({ type: "activity", kind: "tab" }); // aggregate ping only — never content
+  }
 
   let text = $state("");
   let ptt = new Ptt();
@@ -107,7 +111,7 @@
 
 <nav class="tabs">
   {#each ["talk", "sheet", "gear", "magic", "journal"] as t}
-    <button class:active={tab === t} onclick={() => (tab = t as Tab)}>{t}</button>
+    <button class:active={tab === t} onclick={() => switchTab(t as Tab)}>{t}</button>
   {/each}
 </nav>
 

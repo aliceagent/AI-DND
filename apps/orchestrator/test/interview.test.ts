@@ -222,3 +222,33 @@ test("phase-4 extras: pace votes reach the host; approvals gate the portrait re-
   await assert.rejects(hub.handle("p1", { type: "approve", characterId: "pc.brena", kind: "portrait", ok: true }),
     /host role required/);
 });
+
+test("table-state vector: telemetry aggregates, spotlight debt finds the quiet player", async () => {
+  const engine = new Engine(82);
+  // two pre-made characters so two boxes can join directly
+  const { PCS } = await import("../../../engine/src/srd.js");
+  for (const pc of PCS) engine.join(pc.ref, pc);
+  const hub = new SessionHub(engine, new EchoDM(), new MockMediaService());
+  const rogue = new FakeConn(), fighter = new FakeConn(), host = new FakeConn();
+  hub.join("r", rogue, { role: "box", characterId: "pc.rogue" });
+  hub.join("f", fighter, { role: "box", characterId: "pc.fighter" });
+  hub.join("h", host, { role: "host" });
+
+  await hub.handle("r", { type: "ptt_start" });
+  await hub.handle("r", { type: "ptt_end", text: "I scout ahead quietly." });
+  await hub.handle("r", { type: "activity", kind: "tab" });
+  await hub.handle("f", { type: "activity", kind: "tab" });
+  await hub.handle("r", { type: "declare", text: "And I check the door." });
+
+  const ts = host.last("table_state");
+  const r = ts.players.find((p: any) => p.characterId === "pc.rogue");
+  const f = ts.players.find((p: any) => p.characterId === "pc.fighter");
+  assert.equal(r.ptt, 1);
+  assert.equal(r.declarations, 2);   // ptt_end + declare
+  assert.equal(r.taps, 1);
+  assert.equal(f.declarations, 0);
+  // the fighter has been quiet longest → top of the spotlight queue
+  assert.equal(ts.spotlightDebt[0], "pc.fighter");
+  // telemetry stays host-side
+  assert.equal(rogue.ofType("table_state").length, 0);
+});

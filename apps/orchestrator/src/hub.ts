@@ -41,6 +41,11 @@ export class SessionHub {
   private builds = new Map<string, CharacterBuild>();
   private paceVotes: { characterId: string; dir: "up" | "down"; seq: number }[] = [];
   private paceSeq = 0;
+  /** Table State vector (build plan §1.4): aggregate telemetry, never
+   *  content. Sequence-ordered so "who's been quiet longest" is
+   *  deterministic; the room-loudness channel waits for hardware. */
+  private telemetry = new Map<string, { ptt: number; declarations: number; taps: number; lastSeq: number }>();
+  private activitySeq = 0;
   private approvals: { kind: "character" | "portrait"; characterId: string; status: "pending" | "approved" | "rejected" }[] = [];
 
   constructor(readonly engine: Engine, private dm: DungeonMaster, private media: MediaService,
@@ -96,8 +101,14 @@ export class SessionHub {
     switch (msg?.type) {
       case "ptt_start": {
         this.requireBox(client);
+        this.touch(client.characterId!, "ptt");
         if (!this.floorQueue.includes(client.characterId!)) this.floorQueue.push(client.characterId!);
         this.broadcastFloor();
+        return;
+      }
+      case "activity": { // aggregate Box interaction ping (tab switch etc.) — never content
+        this.requireBox(client);
+        this.touch(client.characterId!, "taps");
         return;
       }
       case "ptt_end": {
@@ -249,6 +260,7 @@ export class SessionHub {
 
   // ----------------------------------------------------------- turn logic
   private async declarationTurn(characterId: string, text: string): Promise<void> {
+    this.touch(characterId, "declarations");
     await this.enqueueTurn(async () => {
       this.checkpoints.push(this.tip());
       this.engine.declare(characterId, text);
@@ -329,13 +341,37 @@ export class SessionHub {
       .map(c => ({ role: c.role, characterId: c.characterId ?? null })) });
   }
 
+  private touch(characterId: string, kind: "ptt" | "declarations" | "taps"): void {
+    const t = this.telemetry.get(characterId) ?? { ptt: 0, declarations: 0, taps: 0, lastSeq: 0 };
+    t[kind] += 1;
+    t.lastSeq = ++this.activitySeq;
+    this.telemetry.set(characterId, t);
+    this.broadcastTableState();
+  }
+
+  /** The Table State vector the Director will read in Phase 4+. */
+  tableVector() {
+    const players = [...this.clients.values()]
+      .filter(c => c.role === "box" && c.characterId)
+      .map(c => ({ characterId: c.characterId!,
+        ...(this.telemetry.get(c.characterId!) ?? { ptt: 0, declarations: 0, taps: 0, lastSeq: 0 }) }));
+    return {
+      pace: {
+        up: this.paceVotes.filter(v => v.dir === "up").length,
+        down: this.paceVotes.filter(v => v.dir === "down").length,
+        recent: this.paceVotes.slice(-8),
+      },
+      players,
+      // quietest first: the Director's spotlight queue
+      spotlightDebt: [...players].sort((a, b) => a.lastSeq - b.lastSeq).map(p => p.characterId),
+    };
+  }
+
   /** Pace + approvals go to the host seat only — table telemetry, not fiction. */
   private broadcastTableState(): void {
-    const up = this.paceVotes.filter(v => v.dir === "up").length;
-    const down = this.paceVotes.filter(v => v.dir === "down").length;
+    const vector = this.tableVector();
     for (const c of this.clients.values())
-      if (c.role === "host")
-        this.sendTo(c, { type: "table_state", pace: { up, down, recent: this.paceVotes.slice(-8) } });
+      if (c.role === "host") this.sendTo(c, { type: "table_state", ...vector });
   }
 
   private broadcastApprovals(): void {

@@ -18,7 +18,19 @@
 {#if $tableState}
   <div class="meter">
     table pulse: <b class="up">▲ {$tableState.pace.up}</b> · <b class="down">▼ {$tableState.pace.down}</b>
+    {#if $tableState.spotlightDebt?.length}
+      · spotlight debt: <b>{$tableState.spotlightDebt[0]?.replace("pc.", "")}</b>
+    {/if}
   </div>
+  {#if $tableState.players?.length}
+    <div class="players">
+      {#each $tableState.players as p (p.characterId)}
+        <span class="player" class:quiet={$tableState.spotlightDebt[0] === p.characterId}>
+          {p.characterId.replace("pc.", "")} · ptt {p.ptt} · said {p.declarations} · taps {p.taps}
+        </span>
+      {/each}
+    </div>
+  {/if}
 {/if}
 
 {#if $approvals.queue.length}
@@ -60,6 +72,10 @@
   .gm .type { color: #d08770; }
   .mini { padding: 0.1em 0.5em; font-size: 0.9em; }
   .meter { color: #9b93ab; margin-bottom: 0.6rem; }
+  .players { display: flex; gap: 0.5rem; flex-wrap: wrap; margin-bottom: 0.8rem; }
+  .player { background: #1d1b27; border: 1px solid #353044; border-radius: 8px;
+    padding: 0.25rem 0.6rem; font-size: 0.85em; color: #b6aec7; }
+  .player.quiet { border-color: #cdbf9a; color: #cdbf9a; }
   .meter .up { color: #9fd49f; } .meter .down { color: #d08770; }
   .queue { display: flex; flex-direction: column; gap: 0.4rem; margin-bottom: 0.8rem; }
   .appr { display: flex; justify-content: space-between; align-items: center;
