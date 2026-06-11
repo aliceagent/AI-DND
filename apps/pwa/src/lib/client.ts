@@ -104,24 +104,68 @@ export function label(r: RollRequest): string {
   return `${r.ability.toUpperCase()}${skill} ${sign}${r.modifier}${adv}`;
 }
 
-/** A Box's own sheet, folded from the events it was allowed to see. */
+/** A Box's own sheet, folded from the events it was allowed to see —
+ *  the phone never invents a number the log doesn't carry. */
 export const sheet = derived([events, joined], ([$events, $joined]) => {
   const id = $joined?.characterId;
   if (!id) return null;
   let s: any = null;
   for (const e of $events) {
     const p = e.payload ?? {};
-    if (e.type === "combatant_joined" && p.id === id)
-      s = { ...p, hp: p.maxHp, conditions: [] as string[] };
+    if ((e.type === "combatant_joined" || e.type === "character_created") && p.id === id) {
+      s = { ...p, hp: p.maxHp, conditions: [] as string[],
+        inventory: [] as any[], portrait: null,
+        deathSaves: { successes: 0, failures: 0 },
+        slotsUsed: {} as Record<string, number> };
+    }
     if (!s) continue;
-    if (e.type === "damage_applied" && p.target === id) s.hp = Math.max(0, s.hp - p.amount);
-    if (e.type === "healing_applied" && p.target === id) s.hp = Math.min(s.maxHp, s.hp + p.amount);
-    if (e.type === "condition_changed" && p.target === id) {
-      if (p.added && !s.conditions.includes(p.added)) s.conditions = [...s.conditions, p.added];
-      if (p.removed) s.conditions = s.conditions.filter((c: string) => c !== p.removed);
+    if (p.target !== id && p.caster !== id && p.id !== id) continue;
+    switch (e.type) {
+      case "damage_applied": s.hp = Math.max(0, s.hp - p.amount);
+        if (s.hp === 0) s.deathSaves = { successes: 0, failures: 0 }; break;
+      case "healing_applied":
+        if (s.hp === 0 && p.amount > 0) s.deathSaves = { successes: 0, failures: 0 };
+        s.hp = Math.min(s.maxHp, s.hp + p.amount); break;
+      case "condition_changed":
+        if (p.added && !s.conditions.includes(p.added)) s.conditions = [...s.conditions, p.added];
+        if (p.removed) s.conditions = s.conditions.filter((c: string) => c !== p.removed);
+        if (p.added === "stable") s.deathSaves = { successes: 0, failures: 0 };
+        break;
+      case "death_save_recorded": {
+        const k = p.result === "success" ? "successes" : "failures";
+        s.deathSaves = { ...s.deathSaves, [k]: s.deathSaves[k] + (p.count ?? 1) };
+        break;
+      }
+      case "slot_spent":
+        s.slotsUsed = { ...s.slotsUsed, [p.level]: (s.slotsUsed[p.level] ?? 0) + 1 }; break;
+      case "item_granted": s.inventory = [...s.inventory, p.item]; break;
+      case "item_used": s.inventory = s.inventory.filter((i: any) => i.id !== p.itemId); break;
+      case "portrait_attached": s.portrait = p.asset; break;
+      case "level_up":
+        s.level = p.level; s.maxHp += p.maxHpDelta; s.hp += p.maxHpDelta;
+        if (p.slots) s.slots = p.slots;
+        break;
+      case "downtime_applied": break; // long-rest fold below is server-truth; skip client guess
     }
   }
   return s;
+});
+
+/** What this character KNOWS — the Journal tab: private reveals, party
+ *  facts, ratified canon, their own origin story. */
+export const journal = derived([events, joined], ([$events, $joined]) => {
+  const id = $joined?.characterId;
+  const out: { id: number; kind: string; text: string; private?: boolean }[] = [];
+  for (const e of $events) {
+    const p = e.payload ?? {};
+    if (e.type === "fact_revealed")
+      out.push({ id: e.id, kind: "learned", text: p.text, private: Array.isArray(e.visibility) });
+    if (e.type === "canon_ratified")
+      out.push({ id: e.id, kind: "established", text: p.assertion });
+    if (e.type === "backstory_recorded" && p.target === id)
+      out.push({ id: e.id, kind: "origin", text: p.text, private: true });
+  }
+  return out;
 });
 
 /** Shared transcript (declarations + narration) from the event slice. */

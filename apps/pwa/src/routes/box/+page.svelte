@@ -1,7 +1,10 @@
 <script lang="ts">
   import { goto } from "$app/navigation";
-  import { joined, sheet, transcript, rollRequests, floor, send, reportRoll, label, mediaKind } from "$lib/client";
+  import { joined, sheet, journal, transcript, rollRequests, floor, send, reportRoll, label, mediaKind } from "$lib/client";
   import { Ptt, type PttState } from "$lib/ptt";
+
+  type Tab = "talk" | "sheet" | "gear" | "magic" | "journal";
+  let tab: Tab = $state("talk");
 
   let text = $state("");
   let ptt = new Ptt();
@@ -17,7 +20,6 @@
 
   async function pttUp() {
     await ptt.stop(s => (pttState = s));
-    // mock mode: the typed line is the transcript; spark consumes the audio
     if (text.trim()) {
       send({ type: "ptt_end", text: text.trim() });
       text = "";
@@ -44,21 +46,50 @@
     if (confirm("X-card: rewind this content? It's anonymous.")) send({ type: "xcard" });
   }
 
+  const dying = $derived(($sheet?.hp === 0) && !$sheet?.conditions.includes("dead")
+    && !$sheet?.conditions.includes("stable"));
+  const slotLevels = $derived(Object.entries($sheet?.slots ?? {})
+    .map(([lvl, max]) => ({ lvl, max: Number(max), used: Number($sheet?.slotsUsed?.[lvl] ?? 0) })));
+  const mods = $derived($sheet?.abilities
+    ? Object.entries($sheet.abilities).map(([k, v]) => ({
+        k: k.toUpperCase(), v: v as number,
+        m: Math.floor(((v as number) - 10) / 2) }))
+    : []);
   const inQueue = $derived($joined?.characterId != null && $floor.queue.includes($joined.characterId));
 </script>
 
 {#if $sheet}
   <header>
-    <div>
-      <h2>{$sheet.name}</h2>
-      <span class="meta">AC {$sheet.ac} · HP {$sheet.hp}/{$sheet.maxHp}
-        {#if $sheet.conditions.length} · {$sheet.conditions.join(", ")}{/if}</span>
-      {#if $sheet.slots}
-        <span class="meta">· slots L1: {$sheet.slots[1] ?? 0}</span>
+    <div class="who">
+      {#if $sheet.portrait}
+        <img class="face" src={$sheet.portrait} alt={$sheet.name} />
+      {:else}
+        <div class="face placeholder">{$sheet.name?.[0] ?? "?"}</div>
       {/if}
+      <div>
+        <h2>{$sheet.name}</h2>
+        <span class="meta">
+          {#if $sheet.species}{$sheet.species} {$sheet.class} {($sheet.level ?? 1) > 0 ? `· lvl ${$sheet.level ?? 1}` : ""} · {/if}
+          AC {$sheet.ac} · HP {$sheet.hp}/{$sheet.maxHp}
+          {#if $sheet.conditions.length} · {$sheet.conditions.join(", ")}{/if}
+        </span>
+      </div>
     </div>
     <button class="xcard" onclick={xcard} title="X-card: rewind, no questions">✕</button>
   </header>
+
+  {#if dying}
+    <div class="dying">
+      <strong>Dying.</strong>
+      <span class="pips">
+        {#each [0, 1, 2] as i}<span class:on={$sheet.deathSaves.successes > i}>●</span>{/each}
+        saves ·
+        {#each [0, 1, 2] as i}<span class="bad" class:on={$sheet.deathSaves.failures > i}>●</span>{/each}
+        fails
+      </span>
+      <span class="hint">roll a d20 when called — Pip is watching</span>
+    </div>
+  {/if}
 {/if}
 
 {#each $rollRequests as r (r.checkId)}
@@ -72,37 +103,127 @@
   </div>
 {/each}
 
-<section class="log">
-  {#each $transcript as line (line.id)}
-    <p class:pip={line.who === "Pip"}><b>{line.who === "Pip" ? "Pip" : line.who.replace("pc.", "")}</b> {line.text}</p>
+<nav class="tabs">
+  {#each ["talk", "sheet", "gear", "magic", "journal"] as t}
+    <button class:active={tab === t} onclick={() => (tab = t as Tab)}>{t}</button>
   {/each}
-</section>
+</nav>
 
-<div class="talk">
-  <input placeholder={$mediaKind === "mock" ? "type your declaration (mock STT)" : "optional note"}
-    bind:value={text} onkeydown={e => e.key === "Enter" && declare()} />
-  <button class="ptt" class:held={pttState.recording} class:queued={inQueue}
-    onpointerdown={pttDown} onpointerup={pttUp} onpointercancel={pttUp}>
-    {pttState.recording ? "● release to send" : "hold to talk"}
-  </button>
-  {#if pttState.micOk === false}
-    <span class="micwarn">mic: {pttState.error}</span>
-  {/if}
-  {#if $floor.queue.length}
-    <span class="floor">{$floor.mode}: {$floor.queue.map(q => q.replace("pc.", "")).join(" → ")}</span>
-  {/if}
-</div>
+{#if tab === "talk"}
+  <section class="log">
+    {#each $transcript as line (line.id)}
+      <p class:pip={line.who === "Pip"}><b>{line.who === "Pip" ? "Pip" : line.who.replace("pc.", "")}</b> {line.text}</p>
+    {/each}
+  </section>
+
+  <div class="talk">
+    <input placeholder={$mediaKind === "mock" ? "type your declaration (mock STT)" : "optional note"}
+      bind:value={text} onkeydown={e => e.key === "Enter" && declare()} />
+    <button class="ptt" class:held={pttState.recording} class:queued={inQueue}
+      onpointerdown={pttDown} onpointerup={pttUp} onpointercancel={pttUp}>
+      {pttState.recording ? "● release to send" : "hold to talk"}
+    </button>
+    {#if pttState.micOk === false}
+      <span class="micwarn">mic: {pttState.error}</span>
+    {/if}
+    {#if $floor.queue.length}
+      <span class="floorline">{$floor.mode}: {$floor.queue.map(q => q.replace("pc.", "")).join(" → ")}</span>
+    {/if}
+  </div>
+
+{:else if tab === "sheet" && $sheet}
+  <section class="panel">
+    {#if mods.length}
+      <div class="abilities">
+        {#each mods as a}
+          <div class="ab"><span class="k">{a.k}</span><span class="v">{a.v}</span>
+            <span class="m">{a.m >= 0 ? "+" : ""}{a.m}</span></div>
+        {/each}
+      </div>
+    {:else}
+      <p class="hint">A pre-made sheet — full abilities appear for characters born in the interview.</p>
+    {/if}
+    {#if $sheet.skills?.length}
+      <p><b>Trained:</b> {$sheet.skills.map((s: string) => s.replace(/_/g, " ")).join(", ")}</p>
+    {/if}
+    {#if $sheet.saves?.length}
+      <p><b>Saves:</b> {$sheet.saves.join(", ").toUpperCase()}</p>
+    {/if}
+    {#if $sheet.passivePerception}
+      <p><b>Passive perception:</b> {$sheet.passivePerception} · <b>Speed:</b> {$sheet.speed} ft · <b>Armor:</b> {$sheet.armorName}</p>
+    {/if}
+    {#if $sheet.traits?.length}
+      <p><b>Traits:</b> {$sheet.traits.join(", ")}</p>
+    {/if}
+    {#if $sheet.hitDice}
+      <p><b>Hit dice:</b> d{$sheet.hitDice.die} × {$sheet.hitDice.count}</p>
+    {/if}
+  </section>
+
+{:else if tab === "gear" && $sheet}
+  <section class="panel">
+    {#each $sheet.inventory as item (item.id)}
+      <div class="item">
+        <span>{item.name}</span>
+        <button class="mini" onclick={() => send({ type: "use_item", itemId: item.id })}>use</button>
+      </div>
+    {:else}
+      <p class="hint">Nothing carried yet — the world provides.</p>
+    {/each}
+  </section>
+
+{:else if tab === "magic" && $sheet}
+  <section class="panel">
+    {#each slotLevels as s (s.lvl)}
+      <div class="slotrow">
+        <span>Level {s.lvl}</span>
+        <span class="pips">
+          {#each Array(s.max) as _, i}<span class:on={i >= s.used}>◆</span>{/each}
+        </span>
+        <button class="mini" onclick={() => send({ type: "cast", level: Number(s.lvl) })}
+          disabled={s.used >= s.max}>cast</button>
+      </div>
+    {:else}
+      <p class="hint">No spell slots — your magic is steel.</p>
+    {/each}
+  </section>
+
+{:else if tab === "journal"}
+  <section class="panel">
+    {#each $journal as entry (entry.id)}
+      <p class="entry" class:secret={entry.private}>
+        <b>{entry.kind}</b> {entry.text}
+        {#if entry.private}<span class="lock">only you</span>{/if}
+      </p>
+    {:else}
+      <p class="hint">The story hasn't told you anything yet.</p>
+    {/each}
+  </section>
+{/if}
 
 <style>
   header { display: flex; justify-content: space-between; align-items: start; }
+  .who { display: flex; gap: 0.8rem; align-items: center; }
+  .face { width: 52px; height: 52px; border-radius: 12px; object-fit: cover; }
+  .face.placeholder { background: #4a3f6b; display: flex; align-items: center;
+    justify-content: center; font-size: 1.5em; font-weight: 700; }
   h2 { margin: 0 0 0.2rem; }
   .meta { color: #9b93ab; font-size: 0.9em; }
   .xcard { background: #4d2330; border-color: #7c3a4d; font-weight: 700; }
+  .dying { background: #3d2330; border: 1px solid #a04545; border-radius: 10px;
+    padding: 0.6rem 0.9rem; margin-top: 0.6rem; display: flex; gap: 0.7rem; align-items: center; flex-wrap: wrap; }
+  .pips span { opacity: 0.25; margin-right: 0.1em; }
+  .pips span.on { opacity: 1; color: #9fd49f; }
+  .pips span.bad.on { color: #d08770; }
+  .tabs { display: flex; gap: 0.4rem; margin: 0.9rem 0 0.6rem; }
+  .tabs button { padding: 0.4em 0.9em; font-size: 0.9em; text-transform: capitalize;
+    background: #1d1b27; }
+  .tabs button.active { background: #4a3f6b; border-color: #6b5e93; }
   .rollpad { background: #2a2440; border: 1px solid #5d5378; border-radius: 12px;
     padding: 0.9rem; margin: 0.8rem 0; }
   .rollrow { display: flex; gap: 0.5rem; margin-top: 0.5rem; }
   .rollrow input { flex: 1; }
-  .log { margin: 1rem 0; max-height: 50dvh; overflow-y: auto; display: flex; flex-direction: column; gap: 0.4rem; }
+  .log { margin: 0.4rem 0 1rem; max-height: 44dvh; overflow-y: auto; display: flex; flex-direction: column; gap: 0.4rem; }
   .log p { margin: 0; }
   .log .pip { color: #cdbf9a; }
   .talk { position: sticky; bottom: 0; background: #14131c; padding: 0.6rem 0 1rem;
@@ -112,5 +233,22 @@
   .ptt.held { background: #7c2d2d; border-color: #a04545; }
   .ptt.queued { outline: 2px solid #cdbf9a; }
   .micwarn { color: #d08770; font-size: 0.85em; }
-  .floor { color: #9b93ab; font-size: 0.85em; }
+  .floorline { color: #9b93ab; font-size: 0.85em; }
+  .panel { display: flex; flex-direction: column; gap: 0.55rem; }
+  .abilities { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.5rem; }
+  .ab { background: #1d1b27; border: 1px solid #353044; border-radius: 10px;
+    padding: 0.5rem; display: flex; flex-direction: column; align-items: center; }
+  .ab .k { color: #9b93ab; font-size: 0.75em; }
+  .ab .v { font-size: 1.3em; font-weight: 600; }
+  .ab .m { color: #cdbf9a; }
+  .item, .slotrow { display: flex; justify-content: space-between; align-items: center;
+    background: #1d1b27; border: 1px solid #353044; border-radius: 10px; padding: 0.55rem 0.8rem; }
+  .slotrow .pips { font-size: 1.1em; }
+  .slotrow .pips span.on { color: #8fb7d4; }
+  .mini { padding: 0.25em 0.8em; font-size: 0.85em; }
+  .entry { margin: 0; }
+  .entry.secret { color: #cdbf9a; }
+  .lock { color: #6f687f; font-size: 0.8em; margin-left: 0.4em; }
+  .hint { color: #6f687f; }
+  p { margin: 0; }
 </style>

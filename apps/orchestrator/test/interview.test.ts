@@ -124,3 +124,28 @@ test("hub: non-creators cannot drive an interview", async () => {
   await assert.rejects(hub.handle("s1", { type: "interview", input: { text: "hi" } }),
     /creator role required/);
 });
+
+test("hub: Box tab commands — cast spends a slot, refusals surface, items consume", async () => {
+  const engine = new Engine(79);
+  const hub = new SessionHub(engine, new EchoDM(), new MockMediaService());
+  const phone = new FakeConn();
+  hub.join("p1", phone, { role: "creator" });
+  for (const input of [
+    { text: "Mara" }, { choice: "human" }, { choice: "cleric" }, { choice: "acolyte" },
+    { abilities: { str: 12, dex: 10, con: 13, int: 8, wis: 15, cha: 14 } },
+    { choice: "wis+2,cha+1" }, { skills: ["medicine", "history"] },
+    { text: "I swept the shrine steps for twelve years and listened." },
+    { confirm: true },
+  ]) await hub.handle("p1", { type: "interview", input });
+
+  engine.grantItem("pc.mara", { id: "potion", name: "Potion of Healing" });
+  await hub.handle("p1", { type: "cast", level: 1 });
+  await hub.handle("p1", { type: "cast", level: 1 });
+  assert.deepEqual(engine.state().combatants["pc.mara"].slots["1"], { max: 2, used: 2 });
+  await hub.handle("p1", { type: "cast", level: 1 }); // dry — engine refuses, client told
+  assert.match(phone.last("error").error, /no level-1 slot/);
+  await hub.handle("p1", { type: "use_item", itemId: "potion" });
+  assert.equal(engine.state().combatants["pc.mara"].inventory.length, 0);
+  await hub.handle("p1", { type: "use_item", itemId: "potion" });
+  assert.match(phone.last("error").error, /does not carry/);
+});

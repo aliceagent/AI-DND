@@ -140,6 +140,30 @@ export class SessionHub {
         this.sendTo(client, { type: "interview_state", ...state });
         return;
       }
+      case "cast": {
+        this.requireBox(client);
+        await this.enqueueTurn(async () => {
+          try {
+            this.engine.castSpell(client.characterId!, Number(msg.level));
+            this.flushAll();
+          } catch (e) { // the engine's refusal IS the feature — surface it
+            this.sendTo(client, { type: "error", error: String((e as Error).message) });
+          }
+        });
+        return;
+      }
+      case "use_item": {
+        this.requireBox(client);
+        await this.enqueueTurn(async () => {
+          try {
+            this.engine.useItem(client.characterId!, String(msg.itemId));
+            this.flushAll();
+          } catch (e) {
+            this.sendTo(client, { type: "error", error: String((e as Error).message) });
+          }
+        });
+        return;
+      }
       case "xcard": {
         // anyone may x-card; it is anonymous by design
         await this.enqueueTurn(async () => this.xcard());
