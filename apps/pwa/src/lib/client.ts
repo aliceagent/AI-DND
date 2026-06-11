@@ -31,6 +31,8 @@ export const tableState = writable<{ pace: { up: number; down: number; recent: a
 export const benchToken = writable<string | null>(null);
 /** A pending level-up offer for THIS box (host-granted). */
 export const levelupOffer = writable<{ characterId: string; toLevel: number; hitDie: number } | null>(null);
+/** The fogged map from the server: visited nodes named, frontier nameless. */
+export const mapData = writable<{ nodes: any[]; edges: any[] } | null>(null);
 
 /** Raw-message hooks (the screen's mixer subscribes here). */
 export const listeners = new Set<(msg: any) => void>();
@@ -97,6 +99,7 @@ function handle(msg: any): void {
     case "table_state": tableState.set(msg); return;
     case "host_note": toast(msg.text); return;
     case "levelup_offer": levelupOffer.set(msg); return;
+    case "map": mapData.set({ nodes: msg.nodes, edges: msg.edges }); return;
     case "hero_grows":
       toast(`${String(msg.characterId).replace(/^pc\./, "")} reaches level ${msg.toLevel}!`);
       return;
@@ -228,12 +231,20 @@ export const scene = derived(events, $events => {
   return cur ? { ...cur, visited } : null;
 });
 
+/** "[voice:npc.x] line" → speaker + clean text (Pip otherwise). */
+export function parseVoice(raw: string): { speaker: string; text: string } {
+  const m = String(raw ?? "").match(/^\[voice:([\w.-]+)\]\s*(.*)$/s);
+  return m ? { speaker: m[1].replace(/^npc\./, "").replace(/_/g, " "), text: m[2] }
+           : { speaker: "Pip", text: raw };
+}
+
 /** Shared transcript (declarations + narration) from the event slice. */
 export const transcript = derived(events, $events =>
   $events
     .filter(e => e.type === "declaration" || e.type === "narration_delivered")
-    .map(e => ({
-      id: e.id,
-      who: e.type === "declaration" ? (e.actor ?? "someone") : "Pip",
-      text: (e.payload as any).text as string,
-    })));
+    .map(e => {
+      if (e.type === "declaration")
+        return { id: e.id, who: e.actor ?? "someone", text: (e.payload as any).text as string };
+      const v = parseVoice((e.payload as any).text);
+      return { id: e.id, who: v.speaker, text: v.text };
+    }));

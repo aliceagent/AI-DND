@@ -1,6 +1,6 @@
 <script lang="ts">
   import { goto } from "$app/navigation";
-  import { joined, transcript, narrations, floor, roster, listeners, scene, combat } from "$lib/client";
+  import { joined, transcript, narrations, floor, roster, listeners, scene, combat, mapData, parseVoice } from "$lib/client";
   import { mixer } from "$lib/mixer";
   import { backdrop, sigil } from "$lib/palettes";
   import { a11y, motionReduced } from "$lib/a11y";
@@ -42,7 +42,7 @@
 
   $effect(() => { if (!$joined) goto("/"); });
 
-  const latest = $derived($narrations.at(-1)?.text ?? "");
+  const latest = $derived(parseVoice($narrations.at(-1)?.text ?? ""));
   const bd = $derived(backdrop($scene?.palette));
 
   function onMessage(msg: any) {
@@ -58,9 +58,7 @@
         if (!msg.hasAudio) mixer.chime(); // mock TTS: cue the room anyway
       }
       // the caption is unconditional — sound is the optional channel
-      const m = String(msg.text ?? "").match(/^\[voice:([\w.-]+)\]\s*(.*)$/s);
-      caption = m ? { speaker: m[1].replace(/^npc\./, "").replace(/_/g, " "), text: m[2] }
-                  : { speaker: "Pip", text: msg.text };
+      caption = parseVoice(msg.text);
       if (captionTimer) clearTimeout(captionTimer);
       captionTimer = setTimeout(() => (caption = null), Math.max(4500, msg.durationMs + 1500));
     }
@@ -178,7 +176,10 @@
       <p class="thisis">This is <b>{reveal.name}</b>.</p>
     </div>
   {/if}
-  <p class="narration">{latest || "The table is set. Pip clears his throat…"}</p>
+  <p class="narration">
+    {#if latest.text && latest.speaker !== "Pip"}<b class="who">{latest.speaker} — </b>{/if}
+    {latest.text || "The table is set. Pip clears his throat…"}
+  </p>
 
   <div class="transcript">
     {#each $transcript.slice(-8) as line (line.id)}
@@ -208,7 +209,7 @@
 
 {#if mapInset && $scene}
   <div class="mapinset">
-    <MiniMap visited={$scene.visited} currentId={$scene.location_id} glow={bd.glow} />
+    <MiniMap graph={$mapData} currentId={$scene.location_id} glow={bd.glow} />
   </div>
 {/if}
 
@@ -306,6 +307,7 @@
   @keyframes rise { from { opacity: 0; transform: translateY(10px); } }
   .narration { font-size: clamp(1.35em, 3.2vw, 2.3em); line-height: 1.5;
     color: #e8dfc8; text-wrap: balance; }
+  .narration .who { color: #cdbf9a; text-transform: capitalize; }
   .transcript { color: #8d8599; font-size: 0.95em; display: flex; flex-direction: column; gap: 0.3rem; }
   .transcript p { margin: 0; }
   .transcript .pip { color: #b3a87f; }

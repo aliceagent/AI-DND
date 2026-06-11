@@ -15,6 +15,8 @@ import type { MediaService } from "./media.js";
 import { InterviewSession, type InterviewInput } from "./interview.js";
 import { createDistiller, buildPortraitPrompt, fnv1a, type BlockDistiller } from "./charvis.js";
 import type { CharacterBuild } from "../../../engine/src/character.js";
+import type { DemoScene } from "./scenes.js";
+import { EchoDM } from "./dm.js";
 
 export type Role = "box" | "screen" | "host" | "creator";
 
@@ -73,6 +75,8 @@ export class SessionHub {
       media: this.media.kind,
       ...(opts.role === "host" && this.benchToken ? { benchToken: this.benchToken } : {}) });
     this.flushTo(client); // full visible history on join — late phones catch up
+    const map = this.mapPayload();
+    if (map) this.sendTo(client, { type: "map", ...map });
     if (opts.role === "host") { this.broadcastApprovals(); this.broadcastTableState(); }
     this.broadcastRoster();
   }
@@ -322,11 +326,44 @@ export class SessionHub {
     });
   }
 
+  /** The fogged map: visited nodes in full, frontier as nameless stubs.
+   *  Names of unwalked places never leave the server (the wire enforces
+   *  the same secrecy the MiniMap renders). */
+  mapPayload(): { nodes: any[]; edges: any[] } | null {
+    const graph: DemoScene | undefined = (this.dm as EchoDM).scene;
+    if (!graph?.locations) return null;
+    const visited = new Set(this.engine.state().visitedLocations);
+    const frontier = new Set(graph.edges
+      .filter(([a, b]) => visited.has(a) !== visited.has(b))
+      .map(([a, b]) => (visited.has(a) ? b : a)));
+    return {
+      nodes: Object.values(graph.locations)
+        .filter(l => visited.has(l.id) || frontier.has(l.id))
+        .map(l => visited.has(l.id)
+          ? { id: l.id, name: l.name, x: l.x, y: l.y, known: true }
+          : { id: l.id, x: l.x, y: l.y, known: false }),
+      edges: graph.edges
+        .filter(([a, b]) => visited.has(a) || visited.has(b))
+        .map(([a, b]) => ({ from: a, to: b, known: visited.has(a) && visited.has(b) })),
+    };
+  }
+
+  private lastMapKey = "";
+  private broadcastMap(): void {
+    const map = this.mapPayload();
+    if (!map) return;
+    const key = JSON.stringify(map);
+    if (key === this.lastMapKey) return;
+    this.lastMapKey = key;
+    this.broadcast({ type: "map", ...map });
+  }
+
   /** Narration → log → tts → role-gated fan-out (+ roll prompts). */
   private async deliver(narration: string): Promise<void> {
     this.engine.recordNarration(narration);
     const speech = await this.media.tts(narration);
     this.flushAll();
+    this.broadcastMap();
     this.broadcast({ type: "narration", text: narration,
       durationMs: speech.durationMs, hasAudio: speech.audio !== null });
     for (const p of Object.values(this.engine.state().pendingChecks)) {

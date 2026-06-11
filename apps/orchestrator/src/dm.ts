@@ -5,6 +5,7 @@
 
 import { Engine } from "../../../engine/src/engine.js";
 import { SKILL_ABILITY, type Ability } from "../../../engine/src/srd.js";
+import { SCENES, PRIVATE_RAILS, type DemoScene } from "./scenes.js";
 
 export interface DungeonMaster {
   /** Open the scene; returns Pip's opening narration. */
@@ -15,33 +16,63 @@ export interface DungeonMaster {
   afterRoll(engine: Engine, checkId: number): Promise<string>;
 }
 
-/** Deterministic mock DM. Keyword → skill check (hidden DC, real engine
- *  flow); anything else gets templated acknowledgement. No randomness:
- *  the demo replays byte-identical. */
+/** Deterministic mock DM walking a DemoScene's rails the way the Director
+ *  will walk pack beats: travel, dialogue (with reveals), a springable
+ *  encounter, private rails to the asker alone, keyword → skill checks.
+ *  No randomness in the rails: the demo replays byte-identical. */
 export class EchoDM implements DungeonMaster {
+  constructor(readonly scene: DemoScene =
+    SCENES[process.env.HERMYS_SCENE ?? "cellar"] ?? SCENES.cellar) {}
+
+  private goTo(engine: Engine, locId: string): string {
+    const loc = this.scene.locations[locId];
+    const already = engine.state().scene?.locationId === locId;
+    engine.setScene({ id: loc.id, name: loc.name, mood: loc.mood, palette: loc.palette });
+    return already ? `You are still at ${loc.name.toLowerCase()}.` : loc.arrival;
+  }
+
   async openScene(engine: Engine): Promise<string> {
-    engine.setScene({ id: "loc.cellar", name: "The Moonlit Cellar",
-      mood: "dread", palette: "night-blues" });
-    engine.revealFact("fact.cellar_dark", "party",
-      "The cellar is dark, cold, and smells of mildew and old paper.");
-    return "The hatch creaks open onto darkness. Cold air rises, thick with mildew and old paper. Your lantern pushes a small circle of light down worn stone steps.";
+    const opening = this.scene.opening;
+    if (opening.fact) engine.revealFact(opening.fact.id, "party", opening.fact.text);
+    return this.goTo(engine, opening.location);
   }
 
   async takeTurn(engine: Engine, decl: { actor: string; text: string }): Promise<string> {
-    // travel: the demo's second node — a new scene is an establishing moment
-    if (/upstairs|outside|leave|back up|counting.house/i.test(decl.text)) {
-      const already = engine.state().scene?.locationId === "loc.counting_house";
-      engine.setScene({ id: "loc.counting_house", name: "The Counting-House Above",
-        mood: "wary-quiet", palette: "lamp-gold" });
-      return already
-        ? "You are already among the desks and dust above."
-        : "You climb back into the counting-house: overturned desks, scattered ledgers, moonlight through a broken shutter.";
+    const here = engine.state().scene?.locationId;
+
+    // the encounter rail: real combatants, real initiative
+    const enc = this.scene.encounter;
+    if (enc && here === enc.at && enc.re.test(decl.text)
+        && !engine.state().combatants[`${enc.statblock.ref}.1`]) {
+      for (let i = 1; i <= enc.count; i++)
+        engine.join(`${enc.statblock.ref}.${i}`, { ...enc.statblock, name: `${enc.statblock.name} ${i}` });
+      engine.rollInitiativeAll();
+      return enc.announce;
     }
-    if (/cellar|downstairs|back down/i.test(decl.text)) {
-      engine.setScene({ id: "loc.cellar", name: "The Moonlit Cellar",
-        mood: "dread", palette: "night-blues" });
-      return "Down the worn steps again; the dark accepts you back.";
-    }
+
+    // private rails: the asker alone learns it (Box-private moment)
+    for (const rail of PRIVATE_RAILS[this.scene.id] ?? [])
+      if (here === rail.at && rail.re.test(decl.text)) {
+        const known = engine.state().facts[rail.id]?.includes(decl.actor);
+        if (!known) {
+          engine.revealFact(rail.id, [decl.actor], rail.text);
+          return "You lean closer. Something here is meant for your eyes first.";
+        }
+      }
+
+    // dialogue rails (optionally revealing as they speak)
+    for (const d of this.scene.dialogue)
+      if ((!d.at || d.at === here) && d.re.test(decl.text)) {
+        if (d.reveal && !engine.state().facts[d.reveal.id])
+          engine.revealFact(d.reveal.id,
+            d.reveal.to === "party" ? "party" : [decl.actor], d.reveal.text);
+        return d.line;
+      }
+
+    // travel rails
+    for (const t of this.scene.travel)
+      if (t.re.test(decl.text)) return this.goTo(engine, t.to);
+
     const skill = matchSkill(decl.text);
     if (skill) {
       const ability = SKILL_ABILITY[skill] as Ability;

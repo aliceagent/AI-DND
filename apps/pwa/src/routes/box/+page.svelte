@@ -1,6 +1,6 @@
 <script lang="ts">
   import { goto } from "$app/navigation";
-  import { joined, sheet, journal, transcript, rollRequests, floor, send, reportRoll, label, mediaKind, scene, listeners, combat, levelupOffer } from "$lib/client";
+  import { joined, sheet, journal, transcript, rollRequests, floor, send, reportRoll, label, mediaKind, scene, listeners, combat, levelupOffer, mapData } from "$lib/client";
   import { sigil } from "$lib/palettes";
   import { a11y, vibrate, HAPTIC } from "$lib/a11y";
   import A11ySheet from "$lib/A11ySheet.svelte";
@@ -289,7 +289,7 @@
 {:else if tab === "map"}
   <section class="panel mappanel">
     {#if $scene}
-      <MiniMap visited={$scene.visited} currentId={$scene.location_id} />
+      <MiniMap graph={$mapData} currentId={$scene.location_id} />
       <p class="hint">you are at {$scene.name} — the dark holds what you haven't walked</p>
     {:else}
       <p class="hint">No ground beneath your feet yet.</p>

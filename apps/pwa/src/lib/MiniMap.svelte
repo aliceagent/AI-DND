@@ -1,35 +1,32 @@
 <script lang="ts">
-  import { DEMO_MAP } from "$lib/demo-map";
+  /** Renders the SERVER-fogged graph: known nodes carry names; frontier
+   *  stubs arrive nameless by design — the wire keeps the secrets, this
+   *  component just draws what it was allowed to hear. */
   import { sigil } from "$lib/palettes";
   import { a11y, motionReduced } from "$lib/a11y";
 
-  let { visited = [], currentId = null, glow = "#cdbf9a" }:
-    { visited?: string[]; currentId?: string | null; glow?: string } = $props();
+  let { graph = null, currentId = null, glow = "#cdbf9a" }:
+    { graph?: { nodes: any[]; edges: any[] } | null; currentId?: string | null; glow?: string } = $props();
 
-  const seen = $derived(new Set(visited));
-  // fog: visited nodes in full; unvisited neighbors of visited as "?" stubs
-  const frontier = $derived(new Set(DEMO_MAP.edges
-    .filter(e => seen.has(e.from) !== seen.has(e.to))
-    .map(e => (seen.has(e.from) ? e.to : e.from))));
-  const node = (id: string) => DEMO_MAP.nodes.find(n => n.id === id)!;
-  const here = $derived(currentId ? node(currentId) : null);
+  const byId = $derived(new Map((graph?.nodes ?? []).map(n => [n.id, n])));
+  const here = $derived(currentId ? byId.get(currentId) : null);
   const rm = $derived(motionReduced($a11y));
 </script>
 
+{#if graph}
 <svg viewBox="0 0 200 140" role="img"
-     aria-label={here ? `map — you are at ${here.name}` : "map"}>
-  {#each DEMO_MAP.edges as e}
-    {#if seen.has(e.from) || seen.has(e.to)}
-      {@const a = node(e.from)}
-      {@const b = node(e.to)}
+     aria-label={here?.name ? `map — you are at ${here.name}` : "map"}>
+  {#each graph.edges as e}
+    {@const a = byId.get(e.from)}
+    {@const b = byId.get(e.to)}
+    {#if a && b}
       <line x1={a.x} y1={a.y} x2={b.x} y2={b.y}
-        stroke={seen.has(e.from) && seen.has(e.to) ? "#5d5378" : "#3a3450"}
-        stroke-width="1.5"
-        stroke-dasharray={seen.has(e.from) && seen.has(e.to) ? "" : "3 4"} />
+        stroke={e.known ? "#5d5378" : "#3a3450"} stroke-width="1.5"
+        stroke-dasharray={e.known ? "" : "3 4"} />
     {/if}
   {/each}
-  {#each DEMO_MAP.nodes as n (n.id)}
-    {#if seen.has(n.id)}
+  {#each graph.nodes as n (n.id)}
+    {#if n.known}
       {#if currentId === n.id}
         <circle cx={n.x} cy={n.y} r="11" fill="none" stroke={glow} stroke-width="1.5"
           opacity="0.8">{#if !rm}<animate attributeName="r" values="9;13;9" dur="2.4s" repeatCount="indefinite" />{/if}</circle>
@@ -38,13 +35,14 @@
         stroke="#14131c" stroke-width="1.5" />
       <text x={n.x} y={n.y - 11} text-anchor="middle" class="lbl"
         fill={currentId === n.id ? glow : "#b6aec7"}>{sigil(n.id)} {n.name}</text>
-    {:else if frontier.has(n.id)}
+    {:else}
       <circle cx={n.x} cy={n.y} r="5" fill="none" stroke="#3a3450" stroke-width="1.2"
         stroke-dasharray="2 3" />
       <text x={n.x} y={n.y + 3.5} text-anchor="middle" class="unknown" fill="#6f687f">?</text>
     {/if}
   {/each}
 </svg>
+{/if}
 
 <style>
   svg { width: 100%; height: 100%; }
