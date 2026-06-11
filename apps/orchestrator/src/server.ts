@@ -15,6 +15,7 @@ import { networkInterfaces } from "node:os";
 import { randomUUID } from "node:crypto";
 import { WebSocketServer } from "ws";
 import { loadDrafts, saveReviewed, benchAuthorized } from "./bench.js";
+import { loadCampaign, CampaignDM } from "./campaign.js";
 import { Engine } from "../../../engine/src/engine.js";
 import { SqliteEventStore } from "../../../engine/src/sqlite.js";
 import { PCS } from "../../../engine/src/srd.js";
@@ -34,7 +35,12 @@ const benchToken = randomUUID();
 const engine = new Engine(Number(process.env.HERMYS_SEED ?? 20260610), new SqliteEventStore(DB_PATH));
 if (!Object.keys(engine.state().combatants).length)
   for (const pc of PCS) engine.join(pc.ref, pc);
-const hub = new SessionHub(engine, createDM(), createMediaService(), undefined, benchToken);
+// HERMYS_CAMPAIGN=<path to presentation pack> switches to host-driven
+// campaign mode (Beat Navigator); otherwise the demo-scene DM runs.
+const campaign = process.env.HERMYS_CAMPAIGN ? loadCampaign(process.env.HERMYS_CAMPAIGN) : null;
+const hub = new SessionHub(engine, campaign ? new CampaignDM(campaign) : createDM(),
+  createMediaService(), undefined, benchToken, campaign);
+if (campaign) console.log(`  campaign: ${campaign.title} (${campaign.beats.length} beats)`);
 
 const MIME: Record<string, string> = {
   ".html": "text/html", ".js": "text/javascript", ".css": "text/css",

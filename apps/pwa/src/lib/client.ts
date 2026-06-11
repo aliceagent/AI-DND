@@ -33,6 +33,9 @@ export const benchToken = writable<string | null>(null);
 export const levelupOffer = writable<{ characterId: string; toLevel: number; hitDie: number } | null>(null);
 /** The fogged map from the server: visited nodes named, frontier nameless. */
 export const mapData = writable<{ nodes: any[]; edges: any[] } | null>(null);
+/** Host-only: the campaign's Beat Navigator data + the running beat's gm panel. */
+export const beats = writable<{ campaign: string; beats: any[] } | null>(null);
+export const runningBeat = writable<{ beatId: string; gm: any } | null>(null);
 
 /** Raw-message hooks (the screen's mixer subscribes here). */
 export const listeners = new Set<(msg: any) => void>();
@@ -100,6 +103,8 @@ function handle(msg: any): void {
     case "host_note": toast(msg.text); return;
     case "levelup_offer": levelupOffer.set(msg); return;
     case "map": mapData.set({ nodes: msg.nodes, edges: msg.edges }); return;
+    case "beats": beats.set({ campaign: msg.campaign, beats: msg.beats }); return;
+    case "beat_running": runningBeat.set(msg); return;
     case "hero_grows":
       toast(`${String(msg.characterId).replace(/^pc\./, "")} reaches level ${msg.toLevel}!`);
       return;

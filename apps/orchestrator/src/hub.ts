@@ -17,6 +17,7 @@ import { createDistiller, buildPortraitPrompt, fnv1a, type BlockDistiller } from
 import type { CharacterBuild } from "../../../engine/src/character.js";
 import type { DemoScene } from "./scenes.js";
 import { EchoDM } from "./dm.js";
+import { runBeat, type Campaign } from "./campaign.js";
 
 export type Role = "box" | "screen" | "host" | "creator";
 
@@ -55,7 +56,9 @@ export class SessionHub {
               private distiller: BlockDistiller = createDistiller(),
               /** Per-process secret handed only to host clients — gates the
                *  Bench HTTP endpoints. */
-              readonly benchToken: string | null = null) {}
+              readonly benchToken: string | null = null,
+              /** Loaded presentation pack (host-driven campaign mode). */
+              private campaign: Campaign | null = null) {}
 
   // ---------------------------------------------------------------- joins
   join(id: string, conn: ClientConn, opts: { role: Role; characterId?: string }): void {
@@ -77,7 +80,15 @@ export class SessionHub {
     this.flushTo(client); // full visible history on join — late phones catch up
     const map = this.mapPayload();
     if (map) this.sendTo(client, { type: "map", ...map });
-    if (opts.role === "host") { this.broadcastApprovals(); this.broadcastTableState(); }
+    if (opts.role === "host") {
+      this.broadcastApprovals();
+      this.broadcastTableState();
+      if (this.campaign) // the Beat Navigator: titles + gm panels, host eyes only
+        this.sendTo(client, { type: "beats", campaign: this.campaign.title,
+          beats: this.campaign.beats.map(b => ({ id: b.id, title: b.title,
+            location: this.campaign!.locations[b.location]?.name,
+            hasEncounter: !!b.encounter, gm: b.gm ?? null })) });
+    }
     this.broadcastRoster();
   }
 
@@ -291,6 +302,19 @@ export class SessionHub {
         });
         return;
       }
+      case "run_beat": { // the host turns the page: scene + encounter as events
+        this.requireHost(client);
+        if (!this.campaign) throw new Error("no campaign loaded");
+        await this.enqueueTurn(async () => {
+          const beat = runBeat(this.engine, this.campaign!, String(msg.beatId));
+          this.flushAll();
+          this.broadcastMap();
+          this.broadcastFloor();
+          // the gm panel goes back to the HOST seat only
+          this.sendTo(client, { type: "beat_running", beatId: beat.id, gm: beat.gm ?? null });
+        });
+        return;
+      }
       case "start_combat": { // host control until the Director drives it
         this.requireHost(client);
         await this.enqueueTurn(async () => {
@@ -330,19 +354,20 @@ export class SessionHub {
    *  Names of unwalked places never leave the server (the wire enforces
    *  the same secrecy the MiniMap renders). */
   mapPayload(): { nodes: any[]; edges: any[] } | null {
-    const graph: DemoScene | undefined = (this.dm as EchoDM).scene;
-    if (!graph?.locations) return null;
+    const world: { locations: Record<string, any>; edges: [string, string][] } | undefined =
+      this.campaign ?? (this.dm as EchoDM).scene;
+    if (!world?.locations) return null;
     const visited = new Set(this.engine.state().visitedLocations);
-    const frontier = new Set(graph.edges
+    const frontier = new Set(world.edges
       .filter(([a, b]) => visited.has(a) !== visited.has(b))
       .map(([a, b]) => (visited.has(a) ? b : a)));
     return {
-      nodes: Object.values(graph.locations)
+      nodes: Object.values(world.locations)
         .filter(l => visited.has(l.id) || frontier.has(l.id))
         .map(l => visited.has(l.id)
           ? { id: l.id, name: l.name, x: l.x, y: l.y, known: true }
           : { id: l.id, x: l.x, y: l.y, known: false }),
-      edges: graph.edges
+      edges: world.edges
         .filter(([a, b]) => visited.has(a) || visited.has(b))
         .map(([a, b]) => ({ from: a, to: b, known: visited.has(a) && visited.has(b) })),
     };
@@ -358,8 +383,10 @@ export class SessionHub {
     this.broadcast({ type: "map", ...map });
   }
 
-  /** Narration → log → tts → role-gated fan-out (+ roll prompts). */
+  /** Narration → log → tts → role-gated fan-out (+ roll prompts).
+   *  An empty narration means the human host speaks — events still flow. */
   private async deliver(narration: string): Promise<void> {
+    if (!narration.trim()) { this.flushAll(); this.broadcastMap(); return; }
     this.engine.recordNarration(narration);
     const speech = await this.media.tts(narration);
     this.flushAll();
