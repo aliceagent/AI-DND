@@ -26,6 +26,9 @@ export interface CheckCall {
   dc: number;
   dcVisibility?: "public" | "gm";
   advantage?: Advantage;
+  /** Mechanical follow-up marker (e.g. {kind:"concentration"}) — public,
+   *  carried on the pending check; the resolver acts on it. */
+  purpose?: Record<string, unknown>;
 }
 
 export class Engine {
@@ -193,16 +196,29 @@ export class Engine {
 
     const tierBefore = healthDescriptor(before.hp, before.maxHp);
     // exact numbers: gm-visible for NPCs, private-to-owner for PCs
-    this.emit("damage_applied", isNpc ? "gm" : [targetId], { target: targetId, amount }, null, causes);
+    const dmg = this.emit("damage_applied", isNpc ? "gm" : [targetId], { target: targetId, amount }, null, causes);
     const after = this.state().combatants[targetId];
     const tierAfter = healthDescriptor(after.hp, after.maxHp);
     if (tierAfter !== tierBefore)
       this.emit("health_tier_changed", "public", { target: targetId, tier: tierAfter }, null, causes);
     if (after.hp === 0) {
+      if (before.concentratingOn) this.endConcentration(targetId, "incapacitated", dmg.id);
       const massive = amount - before.hp >= before.maxHp; // excess ≥ max hp: instant death
       this.emit("condition_changed", "public",
         { target: targetId, added: isNpc || massive ? "dead" : "unconscious" }, null, causes);
       this.checkCombatEnd();
+      return;
+    }
+    // concentration check on damage: DC = max(10, half the damage). The DC
+    // is mechanical and public; hybrid dice as ever — PCs report, NPCs roll.
+    if (before.concentratingOn) {
+      const dc = Math.max(10, Math.floor(amount / 2));
+      if (isNpc)
+        this.engineCheck({ actor: targetId, kind: "save", ability: "con", dc,
+          purpose: { kind: "concentration" } });
+      else
+        this.callCheck({ actor: targetId, kind: "save", ability: "con", dc,
+          dcVisibility: "public", purpose: { kind: "concentration" } });
     }
   }
 
@@ -268,6 +284,7 @@ export class Engine {
     const called = this.emit("check_called", "public",
       { actor: call.actor, kind: call.kind, ability: call.ability, skill,
         advantage: eff, modifier,
+        ...(call.purpose ? { purpose: call.purpose } : {}),
         ...(dcVis === "public" ? { dc: call.dc, dcVisibility: "public" } : {}) },
       call.actor);
     if (dcVis === "gm")
@@ -307,7 +324,8 @@ export class Engine {
 
     const called = this.emit("check_called", "gm",
       { actor: call.actor, kind: call.kind, ability: call.ability, skill,
-        advantage: eff, modifier, dc: call.dc, dcVisibility: "gm" }, call.actor);
+        advantage: eff, modifier, dc: call.dc, dcVisibility: "gm",
+        ...(call.purpose ? { purpose: call.purpose } : {}) }, call.actor);
     if (call.kind === "save" && autoFailsSave(c, call.ability)) {
       this.resolveCheck(called.id, null, { autoFail: true, secret: true });
       return { checkId: called.id, outcome: "failure" };
@@ -362,7 +380,30 @@ export class Engine {
     } else {
       this.emit("check_resolved", "public", full, p.actor, checkId);
     }
+    // mechanical follow-ups the check was called FOR
+    if ((p.purpose as any)?.kind === "concentration" && outcome === "failure")
+      this.endConcentration(p.actor, "failed_save", checkId);
     return outcome;
+  }
+
+  // --------------------------------------------------------- concentration
+  /** Begin concentrating (replaces any previous concentration — 2024 rules:
+   *  one spell at a time). PC concentration is table-visible; NPC is gm. */
+  startConcentration(id: string, spell: string, causes?: number): void {
+    const c = this.state().combatants[id];
+    if (!c) throw new Error(`unknown combatant: ${id}`);
+    if (c.concentratingOn)
+      this.emit("concentration_ended", c.side === "npc" ? "gm" : "public",
+        { target: id, spell: c.concentratingOn, reason: "replaced" }, id, causes);
+    this.emit("concentration_started", c.side === "npc" ? "gm" : "public",
+      { target: id, spell }, id, causes);
+  }
+
+  endConcentration(id: string, reason: string, causes?: number): void {
+    const c = this.state().combatants[id];
+    if (!c?.concentratingOn) return;
+    this.emit("concentration_ended", c.side === "npc" ? "gm" : "public",
+      { target: id, spell: c.concentratingOn, reason }, id, causes);
   }
 
   // ---------------------------------------------------------- death saves
@@ -400,13 +441,14 @@ export class Engine {
   // ------------------------------------------------------- slots & rests
   /** Spend a spell slot. Throws if none remain — the engine, not the model,
    *  is the bookkeeper. Slot accounting is the caster's private sheet data. */
-  castSpell(casterId: string, level: number): void {
+  castSpell(casterId: string, level: number, opts: { concentration?: string } = {}): void {
     const c = this.state().combatants[casterId];
     if (!c) throw new Error(`unknown combatant: ${casterId}`);
     const pool = c.slots[level];
     if (!pool || pool.used >= pool.max) throw new Error(`${casterId} has no level-${level} slot`);
-    this.emit("slot_spent", c.side === "npc" ? "gm" : [casterId],
+    const spent = this.emit("slot_spent", c.side === "npc" ? "gm" : [casterId],
       { caster: casterId, level, remaining: pool.max - pool.used - 1 }, casterId);
+    if (opts.concentration) this.startConcentration(casterId, opts.concentration, spent.id);
   }
 
   /** Short-rest hit die: the player rolls it physically and reports it. */
@@ -480,18 +522,39 @@ export class Engine {
   }
 
   // ------------------------------------------------------------ inventory
-  grantItem(charId: string, item: { id: string; name: string; tags?: string[] }, causes?: number): void {
+  grantItem(charId: string,
+            item: { id: string; name: string; tags?: string[];
+                    effect?: { kind: "heal"; dice: string } },
+            causes?: number): void {
     if (!this.state().combatants[charId]) throw new Error(`unknown character: ${charId}`);
     this.emit("item_granted", [charId], { target: charId, item }, null, causes);
   }
 
-  /** Use (consume) an item the character actually carries. */
-  useItem(charId: string, itemId: string, causes?: number): void {
+  /** Use (consume) an item the character actually carries. Effects apply
+   *  through normal engine paths; hybrid dice as ever — a PC drinking a
+   *  potion reports the dice, an NPC's are drawn and recorded. */
+  useItem(charId: string, itemId: string,
+          opts: { reportedRolls?: number[] } = {}, causes?: number): void {
     const c = this.state().combatants[charId];
     if (!c) throw new Error(`unknown character: ${charId}`);
-    if (!c.inventory.some(i => i.id === itemId))
-      throw new Error(`${charId} does not carry ${itemId}`);
-    this.emit("item_used", [charId], { target: charId, itemId }, charId, causes);
+    const item = c.inventory.find(i => i.id === itemId) as
+      (typeof c.inventory[number] & { effect?: { kind: "heal"; dice: string } }) | undefined;
+    if (!item) throw new Error(`${charId} does not carry ${itemId}`);
+    // validate BEFORE consuming — a refused use must leave the item carried
+    if (item.effect?.kind === "heal" && c.side === "pc" && !opts.reportedRolls?.length)
+      throw new Error(`${item.name} heals ${item.effect.dice} — report the dice`);
+    const used = this.emit("item_used", [charId], { target: charId, itemId }, charId, causes);
+    if (item.effect?.kind === "heal") {
+      let amount: number;
+      if (c.side === "pc") {
+        amount = opts.reportedRolls!.reduce((a, b) => a + b, 0) + parseMod(item.effect.dice);
+      } else {
+        const dmg = rollDice(item.effect.dice, this.rng);
+        this.emit("engine_rolled", "gm", { itemId, rolls: dmg.rolls, total: dmg.total }, charId, used.id);
+        amount = dmg.total;
+      }
+      this.applyHealing(charId, amount, used.id);
+    }
   }
 
   // -------------------------------------------------------------- leveling

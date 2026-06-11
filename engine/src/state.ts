@@ -8,7 +8,10 @@ import { healthDescriptor } from "./srd.js";
 
 export interface SlotPool { max: number; used: number }
 
-export interface InventoryItem { id: string; name: string; tags?: string[] }
+export interface InventoryItem {
+  id: string; name: string; tags?: string[];
+  effect?: { kind: "heal"; dice: string };
+}
 
 export interface Combatant {
   id: string; statRef: string; name: string; side: "pc" | "npc";
@@ -21,6 +24,7 @@ export interface Combatant {
   level: number;
   inventory: InventoryItem[];
   portrait: string | null;                  // asset ref from portrait_attached
+  concentratingOn: string | null;           // spell name, or null
 }
 
 export interface PendingCheck {
@@ -34,6 +38,7 @@ export interface PendingCheck {
   dc: number | null;      // set by the gm-visible companion event
   dcVisibility: "public" | "gm";
   rolls: number[] | null; // reported or engine-drawn d20s
+  purpose: Record<string, unknown> | null; // e.g. {kind:"concentration"} — drives follow-ups
 }
 
 export interface GameState {
@@ -60,9 +65,13 @@ export function reduce(s: GameState, e: GameEvent): GameState {
         ac: p.ac, hp: p.maxHp, maxHp: p.maxHp, conditions: [], initiative: null,
         deathSaves: { successes: 0, failures: 0 }, slots,
         hitDice: p.hitDice ? { die: p.hitDice.die, max: p.hitDice.count, used: 0 } : null,
-        level: p.level ?? 1, inventory: [], portrait: null };
+        level: p.level ?? 1, inventory: [], portrait: null, concentratingOn: null };
       return s;
     }
+    case "concentration_started":
+      s.combatants[p.target].concentratingOn = p.spell; return s;
+    case "concentration_ended":
+      s.combatants[p.target].concentratingOn = null; return s;
     case "item_granted": {
       s.combatants[p.target].inventory.push(p.item);
       return s;
@@ -136,7 +145,8 @@ export function reduce(s: GameState, e: GameEvent): GameState {
         s.pendingChecks[e.id] = { id: e.id, actor: p.actor, kind: p.kind,
           ability: p.ability, skill: p.skill ?? null, advantage: p.advantage ?? "none",
           modifier: p.modifier, dc: p.dc ?? null,
-          dcVisibility: p.dc != null ? (p.dcVisibility ?? "public") : "gm", rolls: null };
+          dcVisibility: p.dc != null ? (p.dcVisibility ?? "public") : "gm", rolls: null,
+          purpose: p.purpose ?? null };
       }
       return s;
     }
