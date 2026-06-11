@@ -39,6 +39,9 @@ export class SessionHub {
 
   private rerolls = new Map<string, number>();   // characterId -> portrait rerolls used
   private builds = new Map<string, CharacterBuild>();
+  private paceVotes: { characterId: string; dir: "up" | "down"; seq: number }[] = [];
+  private paceSeq = 0;
+  private approvals: { kind: "character" | "portrait"; characterId: string; status: "pending" | "approved" | "rejected" }[] = [];
 
   constructor(readonly engine: Engine, private dm: DungeonMaster, private media: MediaService,
               private distiller: BlockDistiller = createDistiller()) {}
@@ -60,6 +63,7 @@ export class SessionHub {
     this.sendTo(client, { type: "joined", role: opts.role, characterId: opts.characterId,
       media: this.media.kind });
     this.flushTo(client); // full visible history on join — late phones catch up
+    if (opts.role === "host") { this.broadcastApprovals(); this.broadcastTableState(); }
     this.broadcastRoster();
   }
 
@@ -142,12 +146,44 @@ export class SessionHub {
             // the portrait-anchor moment: distill the story → campaign-style
             // prompt → render (mock: prompt persisted, placeholder face)
             await this.renderPortrait(session.build, session.backstory, 0);
+            // the host signs off on new arrivals (Prep-Bench philosophy:
+            // nothing enters the table without a human yes)
+            this.approvals.push(
+              { kind: "character", characterId: session.build.id, status: "pending" },
+              { kind: "portrait", characterId: session.build.id, status: "pending" });
+            this.broadcastApprovals();
             this.flushAll();
             this.broadcastRoster();
           });
           return;
         }
         this.sendTo(client, { type: "interview_state", ...state });
+        return;
+      }
+      case "pace": { // the ▲/▼ micro-signal: "offer Hermys a token"
+        this.requireBox(client);
+        const dir = msg.dir === "up" ? "up" : "down";
+        this.paceVotes.push({ characterId: client.characterId!, dir, seq: ++this.paceSeq });
+        if (this.paceVotes.length > 40) this.paceVotes.shift();
+        this.broadcastTableState();
+        return;
+      }
+      case "approve": { // host verdict on a creation/portrait approval
+        this.requireHost(client);
+        const a = this.approvals.find(x =>
+          x.characterId === msg.characterId && x.kind === msg.kind && x.status === "pending");
+        if (!a) throw new Error(`no pending ${msg.kind} approval for ${msg.characterId}`);
+        a.status = msg.ok ? "approved" : "rejected";
+        const box = [...this.clients.values()].find(c => c.role === "box" && c.characterId === a.characterId);
+        if (a.kind === "portrait" && !msg.ok) {
+          this.rerolls.delete(a.characterId);       // the host re-opens the re-roll
+          this.approvals.push({ kind: "portrait", characterId: a.characterId, status: "pending" });
+          if (box) this.sendTo(box, { type: "host_note", text: "The host asks for another face — your re-roll is open again." });
+        } else if (box) {
+          this.sendTo(box, { type: "host_note",
+            text: msg.ok ? `${a.kind} approved — welcome to the table.` : `${a.kind} needs another pass.` });
+        }
+        this.broadcastApprovals();
         return;
       }
       case "portrait_reroll": {
@@ -287,6 +323,22 @@ export class SessionHub {
   private broadcastRoster(): void {
     this.broadcast({ type: "roster", clients: [...this.clients.values()]
       .map(c => ({ role: c.role, characterId: c.characterId ?? null })) });
+  }
+
+  /** Pace + approvals go to the host seat only — table telemetry, not fiction. */
+  private broadcastTableState(): void {
+    const up = this.paceVotes.filter(v => v.dir === "up").length;
+    const down = this.paceVotes.filter(v => v.dir === "down").length;
+    for (const c of this.clients.values())
+      if (c.role === "host")
+        this.sendTo(c, { type: "table_state", pace: { up, down, recent: this.paceVotes.slice(-8) } });
+  }
+
+  private broadcastApprovals(): void {
+    for (const c of this.clients.values())
+      if (c.role === "host")
+        this.sendTo(c, { type: "approvals", queue: this.approvals.filter(a => a.status === "pending"),
+          decided: this.approvals.filter(a => a.status !== "pending").slice(-6) });
   }
 
   private broadcastFloor(): void {

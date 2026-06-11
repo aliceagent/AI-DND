@@ -128,6 +128,11 @@
     {#if pttState.micOk === false}
       <span class="micwarn">mic: {pttState.error}</span>
     {/if}
+    <div class="pace">
+      <span>offer Hermys a token</span>
+      <button class="mini" title="more, faster" onclick={() => send({ type: "pace", dir: "up" })}>▲</button>
+      <button class="mini" title="ease up" onclick={() => send({ type: "pace", dir: "down" })}>▼</button>
+    </div>
     {#if $floor.queue.length}
       <span class="floorline">{$floor.mode}: {$floor.queue.map(q => q.replace("pc.", "")).join(" → ")}</span>
     {/if}
@@ -240,6 +245,7 @@
   .ptt.queued { outline: 2px solid #cdbf9a; }
   .micwarn { color: #d08770; font-size: 0.85em; }
   .floorline { color: #9b93ab; font-size: 0.85em; }
+  .pace { display: flex; gap: 0.5rem; align-items: center; color: #6f687f; font-size: 0.85em; }
   .panel { display: flex; flex-direction: column; gap: 0.55rem; }
   .abilities { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.5rem; }
   .ab { background: #1d1b27; border: 1px solid #353044; border-radius: 10px;

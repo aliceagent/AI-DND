@@ -182,3 +182,43 @@ test("portrait pipeline: sealed characters get a public portrait with the prompt
     .map(e => (e.payload as any).asset);
   assert.notEqual(takes[0], takes[1]); // different deterministic seeds
 });
+
+test("phase-4 extras: pace votes reach the host; approvals gate the portrait re-roll", async () => {
+  const engine = new Engine(81);
+  const hub = new SessionHub(engine, new EchoDM(), new MockMediaService());
+  const phone = new FakeConn();
+  const host = new FakeConn();
+  hub.join("p1", phone, { role: "creator" });
+  for (const input of [
+    { text: "Brena" }, { choice: "dwarf" }, { choice: "fighter" }, { choice: "soldier" },
+    { abilities: ABILITIES }, { choice: "str+2,con+1" }, { skills: ["perception", "survival"] },
+    { text: "I held the bridge at Marlow ford until the carts were across." },
+    { confirm: true },
+  ]) await hub.handle("p1", { type: "interview", input });
+
+  // a late host sees the pending approvals immediately
+  hub.join("h1", host, { role: "host" });
+  const q = host.last("approvals").queue;
+  assert.deepEqual(q.map((a: any) => a.kind).sort(), ["character", "portrait"]);
+
+  // pace: the box taps ▲▲▼ — only the host hears the table's pulse
+  await hub.handle("p1", { type: "pace", dir: "up" });
+  await hub.handle("p1", { type: "pace", dir: "up" });
+  await hub.handle("p1", { type: "pace", dir: "down" });
+  assert.deepEqual(host.last("table_state").pace.up, 2);
+  assert.deepEqual(host.last("table_state").pace.down, 1);
+  assert.equal(phone.ofType("table_state").length, 0, "telemetry leaked to a box");
+
+  // approvals: character yes; portrait no → the re-roll re-opens
+  await hub.handle("p1", { type: "portrait_reroll" });            // burn the free one
+  await hub.handle("p1", { type: "portrait_reroll" });
+  assert.match(phone.last("error").error, /re-roll spent/);
+  await hub.handle("h1", { type: "approve", characterId: "pc.brena", kind: "character", ok: true });
+  await hub.handle("h1", { type: "approve", characterId: "pc.brena", kind: "portrait", ok: false });
+  assert.match(phone.last("host_note").text, /another face/);
+  await hub.handle("p1", { type: "portrait_reroll" });            // open again
+  assert.equal(engine.store.timeline().filter(e => e.type === "portrait_attached").length, 3);
+  // non-hosts cannot judge
+  await assert.rejects(hub.handle("p1", { type: "approve", characterId: "pc.brena", kind: "portrait", ok: true }),
+    /host role required/);
+});

@@ -24,6 +24,9 @@ export const toasts = writable<{ id: number; text: string }[]>([]);
 export const lastError = writable<string | null>(null);
 /** Creation interview frame from the hub (role: creator). */
 export const interview = writable<any | null>(null);
+/** Host-only telemetry: approvals queue + the table's pace pulse. */
+export const approvals = writable<{ queue: any[]; decided: any[] }>({ queue: [], decided: [] });
+export const tableState = writable<{ pace: { up: number; down: number; recent: any[] } } | null>(null);
 
 /** Raw-message hooks (the screen's mixer subscribes here). */
 export const listeners = new Set<(msg: any) => void>();
@@ -85,6 +88,9 @@ function handle(msg: any): void {
     case "floor": floor.set(msg); return;
     case "roster": roster.set(msg.clients); return;
     case "interview_state": interview.set(msg); return;
+    case "approvals": approvals.set({ queue: msg.queue, decided: msg.decided }); return;
+    case "table_state": tableState.set(msg); return;
+    case "host_note": toast(msg.text); return;
     case "character_sealed":
       interview.set(null);
       toast(`${msg.sheet.name} the ${msg.sheet.species} ${msg.sheet.class} — sealed.`);
