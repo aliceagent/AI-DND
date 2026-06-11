@@ -1,8 +1,24 @@
 <script lang="ts">
   import { goto } from "$app/navigation";
-  import { joined, sheet, journal, transcript, rollRequests, floor, send, reportRoll, label, mediaKind, scene } from "$lib/client";
+  import { joined, sheet, journal, transcript, rollRequests, floor, send, reportRoll, label, mediaKind, scene, listeners } from "$lib/client";
   import { sigil } from "$lib/palettes";
+  import { a11y, vibrate, HAPTIC } from "$lib/a11y";
+  import A11ySheet from "$lib/A11ySheet.svelte";
   import { Ptt, type PttState } from "$lib/ptt";
+  import { onMount, onDestroy } from "svelte";
+
+  /** Haptic twins for the room's audio cues — a player who can't hear the
+   *  chime feels the narration land, the roll called, the secret arrive. */
+  function onMsg(msg: any) {
+    if (msg.type === "narration") vibrate(HAPTIC.narration, $a11y);
+    if (msg.type === "roll_request") vibrate(HAPTIC.rollCall, $a11y);
+    if (msg.type === "events")
+      for (const e of msg.events)
+        if (e.type === "fact_revealed" && Array.isArray(e.visibility))
+          vibrate(HAPTIC.privateReveal, $a11y);
+  }
+  onMount(() => listeners.add(onMsg));
+  onDestroy(() => listeners.delete(onMsg));
 
   type Tab = "talk" | "sheet" | "gear" | "magic" | "journal";
   let tab: Tab = $state("talk");
@@ -66,6 +82,7 @@
 {#if $scene}
   <div class="where"><span>{sigil($scene.location_id)}</span> {$scene.name}</div>
 {/if}
+<A11ySheet />
 
 {#if $sheet}
   <header>

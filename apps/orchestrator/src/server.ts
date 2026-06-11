@@ -53,7 +53,13 @@ function serveStatic(req: any, res: any): void {
     res.end("<h1>Hermys orchestrator</h1><p>PWA not built yet — see apps/pwa.</p>");
     return;
   }
-  res.writeHead(200, { "content-type": MIME[extname(file)] ?? "application/octet-stream" });
+  // SvelteKit fingerprints /_app/immutable — cache those forever; never
+  // cache HTML, or phones at the table run yesterday's app after a deploy.
+  const cache = file.includes("/_app/immutable/")
+    ? "public, max-age=31536000, immutable"
+    : "no-cache";
+  res.writeHead(200, { "content-type": MIME[extname(file)] ?? "application/octet-stream",
+    "cache-control": cache });
   res.end(readFileSync(file));
 }
 
