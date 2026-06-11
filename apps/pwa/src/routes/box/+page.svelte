@@ -1,6 +1,6 @@
 <script lang="ts">
   import { goto } from "$app/navigation";
-  import { joined, sheet, journal, transcript, rollRequests, floor, send, reportRoll, label, mediaKind, scene, listeners } from "$lib/client";
+  import { joined, sheet, journal, transcript, rollRequests, floor, send, reportRoll, label, mediaKind, scene, listeners, combat } from "$lib/client";
   import { sigil } from "$lib/palettes";
   import { a11y, vibrate, HAPTIC } from "$lib/a11y";
   import A11ySheet from "$lib/A11ySheet.svelte";
@@ -13,10 +13,14 @@
     if (msg.type === "narration") vibrate(HAPTIC.narration, $a11y);
     if (msg.type === "roll_request") vibrate(HAPTIC.rollCall, $a11y);
     if (msg.type === "events")
-      for (const e of msg.events)
+      for (const e of msg.events) {
         if (e.type === "fact_revealed" && Array.isArray(e.visibility))
           vibrate(HAPTIC.privateReveal, $a11y);
+        if (e.type === "turn_advanced" && e.payload?.active === $joined?.characterId)
+          vibrate(HAPTIC.yourTurn, $a11y);
+      }
   }
+  const myTurn = $derived($combat.started && !$combat.over && $combat.active === $joined?.characterId);
   onMount(() => listeners.add(onMsg));
   onDestroy(() => listeners.delete(onMsg));
 
@@ -118,6 +122,10 @@
       <span class="hint">roll a d20 when called — Pip is watching</span>
     </div>
   {/if}
+{/if}
+
+{#if myTurn}
+  <div class="yourturn">⚔ YOUR TURN<span> — round {$combat.round}</span></div>
 {/if}
 
 {#each $rollRequests as r (r.checkId)}
@@ -249,6 +257,13 @@
   h2 { margin: 0 0 0.2rem; }
   .meta { color: #9b93ab; font-size: 0.9em; }
   .xcard { background: #4d2330; border-color: #7c3a4d; font-weight: 700; }
+  .yourturn { background: #2a2440; border: 2px solid #cdbf9a; border-radius: 12px;
+    padding: 0.7rem 1rem; margin-top: 0.6rem; text-align: center; font-weight: 700;
+    font-size: 1.15em; color: #f0ead8; letter-spacing: 0.04em;
+    animation: turnpulse 1.6s ease-in-out infinite; }
+  .yourturn span { color: #9b93ab; font-weight: 400; font-size: 0.8em; }
+  @keyframes turnpulse { 50% { box-shadow: 0 0 18px #cdbf9a55; } }
+  @media (prefers-reduced-motion: reduce) { .yourturn { animation: none; } }
   .dying { background: #3d2330; border: 1px solid #a04545; border-radius: 10px;
     padding: 0.6rem 0.9rem; margin-top: 0.6rem; display: flex; gap: 0.7rem; align-items: center; flex-wrap: wrap; }
   .pips span { opacity: 0.25; margin-right: 0.1em; }

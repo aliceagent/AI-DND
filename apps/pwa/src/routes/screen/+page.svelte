@@ -1,6 +1,6 @@
 <script lang="ts">
   import { goto } from "$app/navigation";
-  import { joined, transcript, narrations, floor, roster, listeners, scene } from "$lib/client";
+  import { joined, transcript, narrations, floor, roster, listeners, scene, combat } from "$lib/client";
   import { mixer } from "$lib/mixer";
   import { backdrop, sigil } from "$lib/palettes";
   import { a11y, motionReduced } from "$lib/a11y";
@@ -60,6 +60,8 @@
           if (mixer.running) mixer.sting(e.payload.outcome === "success");
           cue(e.payload.outcome === "success" ? "[the roll lands — success]" : "[the roll falls short]");
         }
+        if (e.type === "combat_started") cue("[steel is drawn — initiative]");
+        if (e.type === "combat_ended") cue("[the fight is over]");
         if (e.type === "portrait_attached") { // the "this is you" moment
           const id = String(e.payload?.target ?? "");
           reveal = { name: id.replace(/^pc\./, "").replace(/_/g, " "), asset: e.payload?.asset ?? "" };
@@ -97,6 +99,21 @@
   <div class="locbanner" style={`--glow:${bd.glow}`}>
     <span class="sig">{sigil($scene.location_id)}</span> {$scene.name}
     {#if $scene.mood}<span class="mood">{$scene.mood}</span>{/if}
+  </div>
+{/if}
+
+{#if $combat.started && !$combat.over}
+  <div class="hud" style={`--glow:${bd.glow}`}>
+    <span class="round">round {$combat.round}</span>
+    {#each $combat.order as id (id)}
+      {@const name = $combat.names[id] ?? id.replace(/^pc\./, "")}
+      {@const tier = $combat.tiers[id]}
+      <span class="unit" class:active={$combat.active === id} class:down={$combat.dead.has(id)}>
+        {name}
+        {#if $combat.dead.has(id)}<span class="tier">✝</span>
+        {:else if tier}<span class="tier t-{tier}">{tier}</span>{/if}
+      </span>
+    {/each}
   </div>
 {/if}
 
@@ -177,6 +194,23 @@
     color: #f0ead8; text-shadow: 0 2px 30px #000c; text-align: center; }
   .emood { color: var(--glow); letter-spacing: 0.25em; text-transform: uppercase;
     font-size: 0.95em; margin: 0; }
+  @media (max-width: 900px) { .hud { top: 3.6rem !important; } }
+  .hud { position: fixed; top: 0.9rem; left: 50%; transform: translateX(-50%);
+    z-index: 6; display: flex; gap: 0.45rem; align-items: center; flex-wrap: wrap;
+    justify-content: center; max-width: 80vw;
+    background: #14131ccc; border: 1px solid #353044; border-radius: 999px;
+    padding: 0.3em 0.9em; backdrop-filter: blur(6px); }
+  .hud .round { color: #9b93ab; font-size: 0.8em; margin-right: 0.3em;
+    text-transform: uppercase; letter-spacing: 0.12em; }
+  .hud .unit { color: #b6aec7; font-size: 0.92em; padding: 0.12em 0.6em;
+    border-radius: 999px; border: 1px solid transparent; }
+  .hud .unit.active { color: #f0ead8; border-color: var(--glow);
+    background: #2a2440; box-shadow: 0 0 14px #0008; }
+  .hud .unit.down { opacity: 0.45; text-decoration: line-through; }
+  .hud .tier { font-size: 0.78em; margin-left: 0.4em; font-style: italic; }
+  .hud .t-unhurt { color: #9fd49f; } .hud .t-scratched { color: #cdd9a3; }
+  .hud .t-bloodied { color: #e0b35c; } .hud .t-staggering { color: #d08770; }
+  .hud .t-down { color: #a04545; }
   .captions { position: fixed; left: 50%; bottom: 1.1rem; transform: translateX(-50%);
     z-index: 50; max-width: min(92vw, 60rem); background: #0a0910d9;
     border: 1px solid #353044; border-radius: 12px; padding: 0.6em 1.1em;

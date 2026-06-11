@@ -253,6 +253,24 @@ export class SessionHub {
         await this.enqueueTurn(async () => this.rewindTo(Number(msg.eventId)));
         return;
       }
+      case "start_combat": { // host control until the Director drives it
+        this.requireHost(client);
+        await this.enqueueTurn(async () => {
+          this.engine.rollInitiativeAll({}, msg.surprised ?? []);
+          this.flushAll();
+          this.broadcastFloor();
+        });
+        return;
+      }
+      case "advance_turn": {
+        this.requireHost(client);
+        await this.enqueueTurn(async () => {
+          this.engine.advanceTurn();
+          this.flushAll();
+          this.broadcastFloor();
+        });
+        return;
+      }
       default:
         this.sendTo(client, { type: "error", error: `unknown message type: ${msg?.type}` });
     }

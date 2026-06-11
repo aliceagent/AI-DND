@@ -15,6 +15,11 @@
 <h2>Host — gm timeline</h2>
 <p class="sub">the only seat that sees everything; rewind opens a new branch</p>
 
+<div class="combatctl">
+  <button class="mini" onclick={() => send({ type: "start_combat" })}>⚔ start combat</button>
+  <button class="mini" onclick={() => send({ type: "advance_turn" })}>next turn →</button>
+</div>
+
 {#if $tableState}
   <div class="meter">
     table pulse: <b class="up">▲ {$tableState.pace.up}</b> · <b class="down">▼ {$tableState.pace.down}</b>
@@ -71,6 +76,7 @@
   .payload { font-family: ui-monospace, monospace; word-break: break-all; color: #b6aec7; }
   .gm .type { color: #d08770; }
   .mini { padding: 0.1em 0.5em; font-size: 0.9em; }
+  .combatctl { display: flex; gap: 0.5rem; margin-bottom: 0.7rem; }
   .meter { color: #9b93ab; margin-bottom: 0.6rem; }
   .players { display: flex; gap: 0.5rem; flex-wrap: wrap; margin-bottom: 0.8rem; }
   .player { background: #1d1b27; border: 1px solid #353044; border-radius: 8px;

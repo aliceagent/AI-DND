@@ -184,6 +184,28 @@ export const journal = derived([events, joined], ([$events, $joined]) => {
   return out;
 });
 
+/** Public combat picture for the HUD: order, whose turn, descriptive
+ *  tiers — never a number for monsters (decision 21 holds on screen too). */
+export const combat = derived(events, $events => {
+  const names: Record<string, string> = {};
+  const tiers: Record<string, string> = {};
+  const dead = new Set<string>();
+  let order: string[] = [], active: string | null = null, round = 0, started = false, over = false;
+  for (const e of $events) {
+    const p = e.payload ?? {};
+    switch (e.type) {
+      case "entity_seen": names[p.id] = p.name; break;
+      case "combatant_joined": case "character_created": if (p.name) names[p.id] = p.name; break;
+      case "combat_started": order = p.order; started = true; over = false; round = 1; active = p.order[0] ?? null; break;
+      case "turn_advanced": active = p.active; round = p.round; break;
+      case "health_tier_changed": tiers[p.target] = p.tier; break;
+      case "condition_changed": if (p.added === "dead") dead.add(p.target); break;
+      case "combat_ended": over = true; active = null; break;
+    }
+  }
+  return { started, over, order, active, round, names, tiers, dead };
+});
+
 /** Where the party is — folded from scene_set; drives banners and maps. */
 export const scene = derived(events, $events => {
   let cur: any = null;

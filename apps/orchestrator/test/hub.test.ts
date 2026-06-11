@@ -157,3 +157,18 @@ test("scene plumbing: the DM opens with a scene; travel declarations move it", a
   assert.equal(scenes[1].payload.location_id, "loc.counting_house");
   assert.equal(t.engine.state().visitedLocations.length, 2);
 });
+
+test("host combat controls: start_combat rolls initiative, advance_turn moves it; boxes cannot", async () => {
+  const t = table();
+  await t.hub.open();
+  await assert.rejects(t.hub.handle("rogue", { type: "start_combat" }), /host role required/);
+  await t.hub.handle("host", { type: "start_combat" });
+  const s = t.engine.state();
+  assert.equal(s.order.length, 4);
+  assert.equal(s.round, 1);
+  assert.ok(t.screen.events().some(e => e.type === "combat_started"), "the room saw initiative");
+  const before = t.engine.state().turnIndex;
+  await t.hub.handle("host", { type: "advance_turn" });
+  assert.ok(t.screen.events().some(e => e.type === "turn_advanced"));
+  assert.notEqual(t.engine.state().turnIndex, before);
+});
