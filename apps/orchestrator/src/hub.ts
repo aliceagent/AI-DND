@@ -13,6 +13,8 @@ import type { GameEvent } from "../../../engine/src/store.js";
 import type { DungeonMaster } from "./dm.js";
 import type { MediaService } from "./media.js";
 import { InterviewSession, type InterviewInput } from "./interview.js";
+import { createDistiller, buildPortraitPrompt, fnv1a, type BlockDistiller } from "./charvis.js";
+import type { CharacterBuild } from "../../../engine/src/character.js";
 
 export type Role = "box" | "screen" | "host" | "creator";
 
@@ -35,7 +37,11 @@ export class SessionHub {
   private opened = false;
   private turnChain: Promise<void> = Promise.resolve(); // one turn at a time
 
-  constructor(readonly engine: Engine, private dm: DungeonMaster, private media: MediaService) {}
+  private rerolls = new Map<string, number>();   // characterId -> portrait rerolls used
+  private builds = new Map<string, CharacterBuild>();
+
+  constructor(readonly engine: Engine, private dm: DungeonMaster, private media: MediaService,
+              private distiller: BlockDistiller = createDistiller()) {}
 
   // ---------------------------------------------------------------- joins
   join(id: string, conn: ClientConn, opts: { role: Role; characterId?: string }): void {
@@ -122,6 +128,7 @@ export class SessionHub {
           await this.enqueueTurn(async () => {
             const sheet = this.engine.createCharacter(session.build);
             this.engine.recordBackstory(session.build.id, session.backstory);
+            this.builds.set(session.build.id, session.build);
             // rebind: the connection becomes this character's Box (binding is
             // to the character — any device may log back into it later)
             client.role = "box";
@@ -132,12 +139,33 @@ export class SessionHub {
               sheet: { name: sheet.name, class: sheet.class, species: sheet.species } });
             this.sendTo(client, { type: "joined", role: "box", characterId: session.build.id,
               media: this.media.kind });
+            // the portrait-anchor moment: distill the story → campaign-style
+            // prompt → render (mock: prompt persisted, placeholder face)
+            await this.renderPortrait(session.build, session.backstory, 0);
             this.flushAll();
             this.broadcastRoster();
           });
           return;
         }
         this.sendTo(client, { type: "interview_state", ...state });
+        return;
+      }
+      case "portrait_reroll": {
+        this.requireBox(client);
+        const used = this.rerolls.get(client.characterId!) ?? 0;
+        if (used >= 1) { // one free re-roll; beyond that the host decides
+          this.sendTo(client, { type: "error", error: "re-roll spent — ask the host" });
+          return;
+        }
+        const build = this.builds.get(client.characterId!);
+        if (!build) { this.sendTo(client, { type: "error", error: "no stored build for this character" }); return; }
+        const backstory = (this.engine.store.visibleTo(client.characterId!)
+          .find(e => e.type === "backstory_recorded")?.payload as any)?.text ?? "";
+        await this.enqueueTurn(async () => {
+          this.rerolls.set(client.characterId!, used + 1);
+          await this.renderPortrait(build, backstory, used + 1);
+          this.flushAll();
+        });
         return;
       }
       case "cast": {
@@ -203,6 +231,15 @@ export class SessionHub {
       if (box) this.sendTo(box, { type: "roll_request", checkId: p.id, kind: p.kind,
         ability: p.ability, skill: p.skill, modifier: p.modifier, advantage: p.advantage });
     }
+  }
+
+  /** Distill → prompt → render → portrait_attached (public: the reveal). */
+  private async renderPortrait(build: CharacterBuild, backstory: string, take: number): Promise<void> {
+    const block = await this.distiller.distill(build, backstory);
+    const { prompt, seed } = buildPortraitPrompt(block, build);
+    const finalSeed = (seed + fnv1a(`take/${take}`)) >>> 0;
+    const img = await this.media.portrait(prompt, finalSeed);
+    this.engine.attachPortrait(build.id, img.url ?? `pending:${finalSeed}`, prompt);
   }
 
   private xcard(): void {

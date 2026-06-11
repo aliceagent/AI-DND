@@ -61,8 +61,10 @@
 {#if $sheet}
   <header>
     <div class="who">
-      {#if $sheet.portrait}
+      {#if $sheet.portrait && /^(https?:|data:|\/)/.test($sheet.portrait)}
         <img class="face" src={$sheet.portrait} alt={$sheet.name} />
+      {:else if $sheet.portrait}
+        <div class="face placeholder brewing" title="portrait prompt saved — renders on the Spark">✶</div>
       {:else}
         <div class="face placeholder">{$sheet.name?.[0] ?? "?"}</div>
       {/if}
@@ -158,6 +160,9 @@
     {#if $sheet.hitDice}
       <p><b>Hit dice:</b> d{$sheet.hitDice.die} × {$sheet.hitDice.count}</p>
     {/if}
+    {#if $sheet.portrait}
+      <button class="mini" onclick={() => send({ type: "portrait_reroll" })}>new face (one re-roll)</button>
+    {/if}
   </section>
 
 {:else if tab === "gear" && $sheet}
@@ -207,6 +212,7 @@
   .face { width: 52px; height: 52px; border-radius: 12px; object-fit: cover; }
   .face.placeholder { background: #4a3f6b; display: flex; align-items: center;
     justify-content: center; font-size: 1.5em; font-weight: 700; }
+  .face.brewing { background: #2a2440; color: #cdbf9a; border: 1px dashed #5d5378; }
   h2 { margin: 0 0 0.2rem; }
   .meta { color: #9b93ab; font-size: 0.9em; }
   .xcard { background: #4d2330; border-color: #7c3a4d; font-weight: 700; }

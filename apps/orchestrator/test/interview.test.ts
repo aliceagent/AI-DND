@@ -149,3 +149,36 @@ test("hub: Box tab commands — cast spends a slot, refusals surface, items cons
   await hub.handle("p1", { type: "use_item", itemId: "potion" });
   assert.match(phone.last("error").error, /does not carry/);
 });
+
+test("portrait pipeline: sealed characters get a public portrait with the prompt persisted", async () => {
+  const engine = new Engine(80);
+  const hub = new SessionHub(engine, new EchoDM(), new MockMediaService());
+  const phone = new FakeConn();
+  hub.join("p1", phone, { role: "creator" });
+  for (const input of [
+    { text: "Brena" }, { choice: "dwarf" }, { choice: "fighter" }, { choice: "soldier" },
+    { abilities: ABILITIES }, { choice: "str+2,con+1" }, { skills: ["perception", "survival"] },
+    { text: "I held the bridge at Marlow ford until the carts were across." },
+    { confirm: true },
+  ]) await hub.handle("p1", { type: "interview", input });
+
+  const port = engine.store.timeline().filter(e => e.type === "portrait_attached");
+  assert.equal(port.length, 1);
+  assert.equal(port[0].visibility, "public");              // the table sees faces
+  const p = port[0].payload as any;
+  assert.match(p.prompt, /dwarf/);                          // species in the block
+  assert.match(p.prompt, /16:9/);                           // widescreen baked in
+  assert.match(p.prompt, /campaign|cinematic|painterly/i);  // campaign style block
+  assert.match(p.prompt, /campaign-worn|bridge|mended/i);   // a visible mark from the story
+  assert.match(p.asset, /^pending:\d+/);                    // mock: prompt now, pixels later
+  assert.equal(engine.state().combatants["pc.brena"].portrait, p.asset);
+
+  // one free re-roll produces a new take; the second is refused
+  await hub.handle("p1", { type: "portrait_reroll" });
+  assert.equal(engine.store.timeline().filter(e => e.type === "portrait_attached").length, 2);
+  await hub.handle("p1", { type: "portrait_reroll" });
+  assert.match(phone.last("error").error, /re-roll spent/);
+  const takes = engine.store.timeline().filter(e => e.type === "portrait_attached")
+    .map(e => (e.payload as any).asset);
+  assert.notEqual(takes[0], takes[1]); // different deterministic seeds
+});

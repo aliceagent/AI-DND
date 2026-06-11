@@ -21,6 +21,9 @@ export interface MediaService {
   stt(input: { audio?: Uint8Array; text?: string }): Promise<SpeechResult>;
   tts(text: string, voiceId?: string): Promise<AudioResult>;
   imageForManifest(manifestRef: string): Promise<{ url: string | null }>;
+  /** Character portrait render. Mock returns null url — the prompt is
+   *  persisted on the event either way, so the face is repeatable later. */
+  portrait(prompt: string, seed: number): Promise<{ url: string | null }>;
 }
 
 export class MockMediaService implements MediaService {
@@ -37,6 +40,8 @@ export class MockMediaService implements MediaService {
   }
 
   async imageForManifest(): Promise<{ url: string | null }> { return { url: null }; }
+
+  async portrait(): Promise<{ url: string | null }> { return { url: null }; }
 }
 
 export function createMediaService(kind = process.env.HERMYS_MEDIA ?? "mock"): MediaService {
