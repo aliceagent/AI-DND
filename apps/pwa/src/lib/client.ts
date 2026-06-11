@@ -4,7 +4,7 @@
 
 import { writable, derived } from "svelte/store";
 
-export type Role = "box" | "screen" | "host";
+export type Role = "box" | "screen" | "host" | "creator";
 
 export interface Narration { text: string; durationMs: number; hasAudio: boolean }
 export interface RollRequest {
@@ -22,6 +22,8 @@ export const floor = writable<{ mode: string; queue: string[] }>({ mode: "explor
 export const roster = writable<{ role: Role; characterId: string | null }[]>([]);
 export const toasts = writable<{ id: number; text: string }[]>([]);
 export const lastError = writable<string | null>(null);
+/** Creation interview frame from the hub (role: creator). */
+export const interview = writable<any | null>(null);
 
 /** Raw-message hooks (the screen's mixer subscribes here). */
 export const listeners = new Set<(msg: any) => void>();
@@ -82,6 +84,11 @@ function handle(msg: any): void {
       return;
     case "floor": floor.set(msg); return;
     case "roster": roster.set(msg.clients); return;
+    case "interview_state": interview.set(msg); return;
+    case "character_sealed":
+      interview.set(null);
+      toast(`${msg.sheet.name} the ${msg.sheet.species} ${msg.sheet.class} — sealed.`);
+      return;
     case "error": lastError.set(msg.error); return;
   }
 }

@@ -10,15 +10,15 @@
     { id: "pc.wizard", name: "Oren (Wizard)" },
   ];
 
-  let role: Role = $state("box");
+  let role: Role | "creator" = $state("creator");
   let characterId = $state(CHARACTERS[0].id);
 
   $effect(() => {
-    if ($joined) goto(`/${$joined.role}`);
+    if ($joined) goto($joined.role === "creator" ? "/create" : `/${$joined.role}`);
   });
 
   function join() {
-    connect(role === "box" ? { role, characterId } : { role });
+    connect(role === "box" ? { role, characterId } : { role: role as Role });
   }
 </script>
 
@@ -29,7 +29,8 @@
   <label>
     Seat
     <select bind:value={role}>
-      <option value="box">Player (Box)</option>
+      <option value="creator">New character (create)</option>
+      <option value="box">Player (Box) — existing character</option>
       <option value="screen">Shared screen</option>
       <option value="host">Host</option>
     </select>
