@@ -14,6 +14,9 @@ export type Step = "name" | "species" | "class" | "background"
 
 export interface Chip { id: string; label: string; hint?: string }
 
+const STEP_ORDER: Step[] = ["name", "species", "class", "background",
+  "abilities", "bonus", "skills", "backstory", "confirm"];
+
 export interface InterviewState {
   step: Step;
   prompt: string;             // what Pip asks (the UI voices/shows this)
@@ -22,6 +25,9 @@ export interface InterviewState {
   draft: Partial<CharacterBuild> & { backstory?: string };
   preview?: ReturnType<typeof derive>; // on confirm step
   error?: string;
+  index: number;              // progress trail: which question of how many
+  total: number;
+  canBack: boolean;
 }
 
 export type InterviewInput =
@@ -30,7 +36,8 @@ export type InterviewInput =
   | { abilities: Record<Ability, number> }
   | { bonus: Partial<Record<Ability, number>> }
   | { skills: string[] }
-  | { confirm: true };
+  | { confirm: true }
+  | { back: true };
 
 /** Free-text → structured choice. Deterministic on the Mac; LLM on Spark. */
 export interface InterviewParser {
@@ -58,8 +65,16 @@ export class InterviewSession {
     this.state = this.frame("name", {});
   }
 
+  /** Step back one question, draft intact — re-answering overwrites. */
+  back(): InterviewState {
+    const i = STEP_ORDER.indexOf(this.state.step);
+    if (i <= 0 || this.state.step === "done") return this.state;
+    return this.state = this.frame(STEP_ORDER[i - 1], this.state.draft);
+  }
+
   /** Advance with one input; returns the new state (same step + error on bad input). */
   handle(input: InterviewInput): InterviewState {
+    if ((input as any).back) return this.back();
     const d = this.state.draft;
     try {
       switch (this.state.step) {
@@ -139,8 +154,10 @@ export class InterviewSession {
   }
 
   private frame(step: Step, draft: InterviewState["draft"]): InterviewState {
+    const idx = Math.max(0, STEP_ORDER.indexOf(step));
     const f = (prompt: string, chips: Chip[], expect: InterviewState["expect"]): InterviewState =>
-      ({ step, prompt, chips, expect, draft });
+      ({ step, prompt, chips, expect, draft,
+         index: idx, total: STEP_ORDER.length, canBack: idx > 0 && step !== ("done" as Step) });
     switch (step) {
       case "name":
         return f("Welcome to the table. What is your hero called?", [], "text");

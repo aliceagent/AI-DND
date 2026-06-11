@@ -103,6 +103,10 @@ function handle(msg: any): void {
     case "character_sealed":
       interview.set(null);
       toast(`${msg.sheet.name} the ${msg.sheet.species} ${msg.sheet.class} — sealed.`);
+      try { // welcome-back: this device remembers its character
+        localStorage.setItem("hermys.lastCharacter",
+          JSON.stringify({ id: msg.characterId, name: msg.sheet.name }));
+      } catch { /* private mode */ }
       return;
     case "error": lastError.set(msg.error); return;
   }

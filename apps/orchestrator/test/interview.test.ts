@@ -291,3 +291,23 @@ test("level-up flow: host grants, the Box chooses, the engine validates, the roo
   await hub.handle("p1", { type: "levelup", choice: { method: "average" } });
   assert.match(phone.last("error").error, /no level-up offered/);
 });
+
+test("onboarding: back steps the interview without losing the draft", () => {
+  const s = new InterviewSession();
+  s.handle({ text: "Brena" });
+  s.handle({ choice: "dwarf" });
+  let st = s.handle({ back: true });                 // class → species
+  assert.equal(st.step, "species");
+  assert.equal(st.draft.name, "Brena");              // draft intact
+  assert.equal(st.canBack, true);
+  st = s.handle({ choice: "elf" });                  // re-answer overwrites
+  assert.equal(st.step, "class");
+  assert.equal(st.draft.species, "elf");
+  // back at the first question is a no-op
+  const fresh = new InterviewSession();
+  assert.equal(fresh.handle({ back: true }).step, "name");
+  assert.equal(fresh.state.canBack, false);
+  // progress trail counts
+  assert.equal(fresh.state.index, 0);
+  assert.equal(fresh.state.total, 9);
+});

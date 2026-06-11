@@ -41,7 +41,19 @@
 </script>
 
 {#if $interview}
-  <h2>Begin your legend</h2>
+  <header class="crown">
+    <h2>Begin your legend</h2>
+    {#if $interview.total}
+      <div class="trail" aria-label={`question ${$interview.index + 1} of ${$interview.total}`}>
+        {#each Array($interview.total) as _, i}
+          <span class="dot" class:lit={i <= $interview.index}></span>
+        {/each}
+      </div>
+    {/if}
+  </header>
+  {#if $interview.canBack}
+    <button class="back" onclick={() => sendInput({ back: true })}>← back</button>
+  {/if}
   <p class="ask">{$interview.prompt}</p>
   {#if $interview.error}<p class="err">{$interview.error}</p>{/if}
 
@@ -116,6 +128,13 @@
 {/if}
 
 <style>
+  .crown { display: flex; justify-content: space-between; align-items: center; gap: 1rem; }
+  .crown h2 { margin: 0.4rem 0; }
+  .trail { display: flex; gap: 0.3rem; }
+  .dot { width: 7px; height: 7px; border-radius: 50%; background: #353044; }
+  .dot.lit { background: #cdbf9a; }
+  .back { background: none; border: none; color: #9b93ab; padding: 0.2em 0;
+    font-size: 0.92em; cursor: pointer; }
   .ask { font-size: 1.15em; color: #e8dfc8; }
   .err { color: #d08770; }
   .textin { display: flex; flex-direction: column; gap: 0.6rem; }
