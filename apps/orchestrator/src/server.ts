@@ -12,7 +12,9 @@ import { readFileSync, existsSync } from "node:fs";
 import { extname, join, dirname, normalize } from "node:path";
 import { fileURLToPath } from "node:url";
 import { networkInterfaces } from "node:os";
+import { randomUUID } from "node:crypto";
 import { WebSocketServer } from "ws";
+import { loadDrafts, saveReviewed, benchAuthorized } from "./bench.js";
 import { Engine } from "../../../engine/src/engine.js";
 import { SqliteEventStore } from "../../../engine/src/sqlite.js";
 import { PCS } from "../../../engine/src/srd.js";
@@ -26,10 +28,13 @@ const CERT_DIR = process.env.HERMYS_TLS_DIR ?? join(here, "../certs");
 const STATIC_DIR = process.env.HERMYS_PWA_DIR ?? join(here, "../../pwa/dist");
 const DB_PATH = process.env.HERMYS_DB ?? join(here, "../session.db");
 
+const BENCH_DIR = process.env.HERMYS_PACK_DIR ?? join(here, "../../../packs/hotdq/drafts");
+const benchToken = randomUUID();
+
 const engine = new Engine(Number(process.env.HERMYS_SEED ?? 20260610), new SqliteEventStore(DB_PATH));
 if (!Object.keys(engine.state().combatants).length)
   for (const pc of PCS) engine.join(pc.ref, pc);
-const hub = new SessionHub(engine, createDM(), createMediaService());
+const hub = new SessionHub(engine, createDM(), createMediaService(), undefined, benchToken);
 
 const MIME: Record<string, string> = {
   ".html": "text/html", ".js": "text/javascript", ".css": "text/css",
@@ -39,6 +44,7 @@ const MIME: Record<string, string> = {
 
 function serveStatic(req: any, res: any): void {
   const url = (req.url ?? "/").split("?")[0];
+  if (url.startsWith("/api/bench/")) return void handleBench(req, res, url);
   let file = normalize(join(STATIC_DIR, url === "/" ? "index.html" : url));
   if (!file.startsWith(normalize(STATIC_DIR))) { res.writeHead(403); res.end(); return; }
   if (!existsSync(file)) file = join(STATIC_DIR, "index.html"); // SPA fallback
@@ -49,6 +55,29 @@ function serveStatic(req: any, res: any): void {
   }
   res.writeHead(200, { "content-type": MIME[extname(file)] ?? "application/octet-stream" });
   res.end(readFileSync(file));
+}
+
+/** Bench endpoints — host-token gated (the token rides only in the host's
+ *  joined message). GET drafts, PUT the review; originals never overwritten. */
+function handleBench(req: any, res: any, url: string): void {
+  const reply = (code: number, body: unknown) => {
+    res.writeHead(code, { "content-type": "application/json" });
+    res.end(JSON.stringify(body));
+  };
+  if (!benchAuthorized(req.headers["x-bench-token"], benchToken))
+    return reply(403, { error: "host token required" });
+  if (req.method === "GET" && url === "/api/bench/drafts")
+    return reply(200, loadDrafts(BENCH_DIR));
+  if (req.method === "PUT" && url === "/api/bench/reviewed") {
+    let body = "";
+    req.on("data", (c: any) => (body += c));
+    req.on("end", () => {
+      try { reply(200, saveReviewed(BENCH_DIR, JSON.parse(body))); }
+      catch (e) { reply(400, { error: String((e as Error).message) }); }
+    });
+    return;
+  }
+  reply(404, { error: "unknown bench endpoint" });
 }
 
 const keyPath = join(CERT_DIR, "key.pem"), certPath = join(CERT_DIR, "cert.pem");

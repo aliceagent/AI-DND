@@ -27,6 +27,8 @@ export const interview = writable<any | null>(null);
 /** Host-only telemetry: approvals queue + the table's pace pulse. */
 export const approvals = writable<{ queue: any[]; decided: any[] }>({ queue: [], decided: [] });
 export const tableState = writable<{ pace: { up: number; down: number; recent: any[] } } | null>(null);
+/** Host-only: gates the Bench HTTP endpoints. */
+export const benchToken = writable<string | null>(null);
 
 /** Raw-message hooks (the screen's mixer subscribes here). */
 export const listeners = new Set<(msg: any) => void>();
@@ -60,6 +62,7 @@ function handle(msg: any): void {
     case "joined":
       joined.set({ role: msg.role, characterId: msg.characterId ?? null });
       mediaKind.set(msg.media ?? "mock");
+      if (msg.benchToken) benchToken.set(msg.benchToken);
       return;
     case "events":
       events.update(a => [...a, ...msg.events]);

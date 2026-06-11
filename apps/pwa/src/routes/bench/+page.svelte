@@ -5,11 +5,36 @@
    *  week wires it to the orchestrator). Nothing unapproved enters a live
    *  session — approval happens HERE, by a human, only. */
 
+  import { connect, joined, benchToken, toast } from "$lib/client";
+
   let beats: any[] = $state([]);
   let entities: any[] = $state([]);
   let loadedFrom = $state("");
 
   const SCOPES = ["public", "gated", "gm_only"];
+
+  // the Bench is a host-role view: join as host, then pull drafts from the
+  // orchestrator with the token only hosts receive
+  $effect(() => { if (!$joined) connect({ role: "host" }); });
+  $effect(() => {
+    if ($benchToken && !loadedFrom) {
+      fetch("/api/bench/drafts", { headers: { "x-bench-token": $benchToken } })
+        .then(r => r.json())
+        .then(d => { beats = d.beats ?? []; entities = d.entities ?? []; loadedFrom = "server"; })
+        .catch(() => toast("couldn't reach the pack server — use the file inputs"));
+    }
+  });
+
+  async function saveReview() {
+    if (!$benchToken) return;
+    const r = await fetch("/api/bench/reviewed", {
+      method: "PUT",
+      headers: { "x-bench-token": $benchToken, "content-type": "application/json" },
+      body: JSON.stringify({ beats, entities }),
+    });
+    const out = await r.json();
+    toast(r.ok ? `review saved — ${out.approved}/${out.beats} beats approved` : `save failed: ${out.error}`);
+  }
 
   async function loadFile(e: Event, kind: "beats" | "entities") {
     const file = (e.target as HTMLInputElement).files?.[0];
@@ -43,7 +68,10 @@
   <label class="load">beats.json <input type="file" accept=".json" onchange={e => loadFile(e, "beats")} /></label>
   <label class="load">entities.json <input type="file" accept=".json" onchange={e => loadFile(e, "entities")} /></label>
   {#if beats.length}
-    <span class="count">{approvedCount}/{beats.length} approved</span>
+    <span class="count">{approvedCount}/{beats.length} approved{loadedFrom === "server" ? " · from server" : ""}</span>
+    {#if $benchToken}
+      <button onclick={saveReview}>save review</button>
+    {/if}
     <button onclick={exportApproved}>export reviewed</button>
   {/if}
 </div>

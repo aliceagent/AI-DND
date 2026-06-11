@@ -44,7 +44,10 @@ export class SessionHub {
   private approvals: { kind: "character" | "portrait"; characterId: string; status: "pending" | "approved" | "rejected" }[] = [];
 
   constructor(readonly engine: Engine, private dm: DungeonMaster, private media: MediaService,
-              private distiller: BlockDistiller = createDistiller()) {}
+              private distiller: BlockDistiller = createDistiller(),
+              /** Per-process secret handed only to host clients — gates the
+               *  Bench HTTP endpoints. */
+              readonly benchToken: string | null = null) {}
 
   // ---------------------------------------------------------------- joins
   join(id: string, conn: ClientConn, opts: { role: Role; characterId?: string }): void {
@@ -61,7 +64,8 @@ export class SessionHub {
       return;
     }
     this.sendTo(client, { type: "joined", role: opts.role, characterId: opts.characterId,
-      media: this.media.kind });
+      media: this.media.kind,
+      ...(opts.role === "host" && this.benchToken ? { benchToken: this.benchToken } : {}) });
     this.flushTo(client); // full visible history on join — late phones catch up
     if (opts.role === "host") { this.broadcastApprovals(); this.broadcastTableState(); }
     this.broadcastRoster();
