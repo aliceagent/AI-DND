@@ -15,6 +15,8 @@ export function recapLines(store: IEventStore, charId: string | "party"): string
   for (const e of events) {
     const p = e.payload as any;
     switch (e.type) {
+      case "scene_set":
+        lines.push(`You came to ${p.name}.`); break;
       case "fact_revealed":
         lines.push(`You learned: ${p.text}`); break;
       case "canon_ratified":

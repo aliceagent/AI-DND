@@ -142,3 +142,18 @@ test("role guards: a screen cannot declare, only the host can hard-rewind", asyn
   await assert.rejects(t.hub.handle("screen", { type: "declare", text: "hi" }), /box role required/);
   await assert.rejects(t.hub.handle("rogue", { type: "rewind", eventId: 1 }), /host role required/);
 });
+
+test("scene plumbing: the DM opens with a scene; travel declarations move it", async () => {
+  const t = table();
+  await t.hub.open();
+  let scenes = t.screen.events().filter(e => e.type === "scene_set");
+  assert.equal(scenes.length, 1);
+  assert.equal(scenes[0].payload.location_id, "loc.cellar");
+  assert.equal(scenes[0].payload.mood, "dread");
+
+  await t.hub.handle("rogue", { type: "declare", text: "We head upstairs to the counting-house." });
+  scenes = t.screen.events().filter(e => e.type === "scene_set");
+  assert.equal(scenes.length, 2);
+  assert.equal(scenes[1].payload.location_id, "loc.counting_house");
+  assert.equal(t.engine.state().visitedLocations.length, 2);
+});

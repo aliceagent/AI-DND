@@ -571,6 +571,25 @@ export class Engine {
     this.emit("level_up", [charId], { target: charId, ...delta }, charId);
   }
 
+  // ----------------------------------------------------------- the scene
+  /** Where play happens. Public by definition — the party is standing in
+   *  it. Drives the screen's establishing moment, location banners, maps,
+   *  and recaps as folds; presentation never gets a side-channel. */
+  setScene(loc: { id: string; name: string; mood?: string; palette?: string }): GameEvent {
+    return this.emit("scene_set", "public",
+      { location_id: loc.id, name: loc.name,
+        ...(loc.mood ? { mood: loc.mood } : {}),
+        ...(loc.palette ? { palette: loc.palette } : {}) }, "tally");
+  }
+
+  /** An entity arriving somewhere. Visibility is the Director's call —
+   *  an unseen ambusher moves gm-side. */
+  moveEntity(entityId: string, toLocationId: string,
+             visibility: Visibility = "public", causes?: number): GameEvent {
+    return this.emit("entity_moved", visibility,
+      { entity_id: entityId, to: toLocationId }, null, causes);
+  }
+
   // ------------------------------------------------- session & narration
   /** A player's spoken/typed declaration, on the record (public). */
   declare(actorId: string, text: string): GameEvent {

@@ -41,6 +41,8 @@ export interface PendingCheck {
   purpose: Record<string, unknown> | null; // e.g. {kind:"concentration"} — drives follow-ups
 }
 
+export interface SceneRef { locationId: string; name: string; mood: string | null; palette: string | null }
+
 export interface GameState {
   combatants: Record<string, Combatant>;
   order: string[];        // initiative order, set on combat start
@@ -49,10 +51,14 @@ export interface GameState {
   combatOver: boolean;
   facts: Record<string, string[]>; // factId -> character ids it is revealed to ("*" = party)
   pendingChecks: Record<string, PendingCheck>;
+  scene: SceneRef | null;            // where play is happening (party location)
+  visitedLocations: string[];        // fog-of-visited for maps, in arrival order
+  entityLocations: Record<string, string>; // entity id -> location id (entity_moved)
 }
 
 export const initialState = (): GameState =>
-  ({ combatants: {}, order: [], round: 0, turnIndex: 0, combatOver: false, facts: {}, pendingChecks: {} });
+  ({ combatants: {}, order: [], round: 0, turnIndex: 0, combatOver: false, facts: {},
+     pendingChecks: {}, scene: null, visitedLocations: [], entityLocations: {} });
 
 export function reduce(s: GameState, e: GameEvent): GameState {
   const p = e.payload as any;
@@ -68,6 +74,14 @@ export function reduce(s: GameState, e: GameEvent): GameState {
         level: p.level ?? 1, inventory: [], portrait: null, concentratingOn: null };
       return s;
     }
+    case "scene_set": {
+      s.scene = { locationId: p.location_id, name: p.name,
+        mood: p.mood ?? null, palette: p.palette ?? null };
+      if (!s.visitedLocations.includes(p.location_id)) s.visitedLocations.push(p.location_id);
+      return s;
+    }
+    case "entity_moved":
+      s.entityLocations[p.entity_id] = p.to; return s;
     case "concentration_started":
       s.combatants[p.target].concentratingOn = p.spell; return s;
     case "concentration_ended":

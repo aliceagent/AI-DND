@@ -20,12 +20,28 @@ export interface DungeonMaster {
  *  the demo replays byte-identical. */
 export class EchoDM implements DungeonMaster {
   async openScene(engine: Engine): Promise<string> {
+    engine.setScene({ id: "loc.cellar", name: "The Moonlit Cellar",
+      mood: "dread", palette: "night-blues" });
     engine.revealFact("fact.cellar_dark", "party",
       "The cellar is dark, cold, and smells of mildew and old paper.");
     return "The hatch creaks open onto darkness. Cold air rises, thick with mildew and old paper. Your lantern pushes a small circle of light down worn stone steps.";
   }
 
   async takeTurn(engine: Engine, decl: { actor: string; text: string }): Promise<string> {
+    // travel: the demo's second node — a new scene is an establishing moment
+    if (/upstairs|outside|leave|back up|counting.house/i.test(decl.text)) {
+      const already = engine.state().scene?.locationId === "loc.counting_house";
+      engine.setScene({ id: "loc.counting_house", name: "The Counting-House Above",
+        mood: "wary-quiet", palette: "lamp-gold" });
+      return already
+        ? "You are already among the desks and dust above."
+        : "You climb back into the counting-house: overturned desks, scattered ledgers, moonlight through a broken shutter.";
+    }
+    if (/cellar|downstairs|back down/i.test(decl.text)) {
+      engine.setScene({ id: "loc.cellar", name: "The Moonlit Cellar",
+        mood: "dread", palette: "night-blues" });
+      return "Down the worn steps again; the dark accepts you back.";
+    }
     const skill = matchSkill(decl.text);
     if (skill) {
       const ability = SKILL_ABILITY[skill] as Ability;
