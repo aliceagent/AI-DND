@@ -100,6 +100,11 @@
     const last = $transcript.filter(l => l.who === "Pip").at(-1);
     if (last) onMessage({ type: "narration", text: last.text,
       durationMs: Math.max(2000, last.text.split(/\s+/).length / 150 * 60000), hasAudio: false });
+    // …and the first entrance is a moment too: play the establishing card
+    // for the scene the screen walked into
+    if ($scene) onMessage({ type: "events", events: [{ type: "scene_set",
+      payload: { name: $scene.name, location_id: $scene.location_id,
+        mood: $scene.mood, palette: $scene.palette } }] });
   });
   onDestroy(() => listeners.delete(onMessage));
 
