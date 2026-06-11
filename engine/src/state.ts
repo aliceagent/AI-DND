@@ -8,6 +8,8 @@ import { healthDescriptor } from "./srd.js";
 
 export interface SlotPool { max: number; used: number }
 
+export interface InventoryItem { id: string; name: string; tags?: string[] }
+
 export interface Combatant {
   id: string; statRef: string; name: string; side: "pc" | "npc";
   ac: number; hp: number; maxHp: number;
@@ -16,6 +18,9 @@ export interface Combatant {
   deathSaves: { successes: number; failures: number };
   slots: Record<string, SlotPool>;          // spell slot level -> pool
   hitDice: { die: number; max: number; used: number } | null;
+  level: number;
+  inventory: InventoryItem[];
+  portrait: string | null;                  // asset ref from portrait_attached
 }
 
 export interface PendingCheck {
@@ -47,13 +52,43 @@ export const initialState = (): GameState =>
 export function reduce(s: GameState, e: GameEvent): GameState {
   const p = e.payload as any;
   switch (e.type) {
-    case "combatant_joined": {
+    case "combatant_joined":
+    case "character_created": {
       const slots: Record<string, SlotPool> = {};
       for (const [lvl, max] of Object.entries(p.slots ?? {})) slots[lvl] = { max: max as number, used: 0 };
       s.combatants[p.id] = { id: p.id, statRef: p.statRef, name: p.name, side: p.side,
         ac: p.ac, hp: p.maxHp, maxHp: p.maxHp, conditions: [], initiative: null,
         deathSaves: { successes: 0, failures: 0 }, slots,
-        hitDice: p.hitDice ? { die: p.hitDice.die, max: p.hitDice.count, used: 0 } : null };
+        hitDice: p.hitDice ? { die: p.hitDice.die, max: p.hitDice.count, used: 0 } : null,
+        level: p.level ?? 1, inventory: [], portrait: null };
+      return s;
+    }
+    case "item_granted": {
+      s.combatants[p.target].inventory.push(p.item);
+      return s;
+    }
+    case "item_used": {
+      const c = s.combatants[p.target];
+      const i = c.inventory.findIndex(x => x.id === p.itemId);
+      if (i >= 0) c.inventory.splice(i, 1);
+      return s;
+    }
+    case "portrait_attached": {
+      s.combatants[p.target].portrait = p.asset;
+      return s;
+    }
+    case "level_up": {
+      const c = s.combatants[p.target];
+      c.level = p.level;
+      c.maxHp += p.maxHpDelta;
+      c.hp += p.maxHpDelta;
+      if (p.slots) {
+        const slots: Record<string, SlotPool> = {};
+        for (const [lvl, max] of Object.entries(p.slots))
+          slots[lvl] = { max: max as number, used: c.slots[lvl]?.used ?? 0 };
+        c.slots = slots;
+      }
+      if (c.hitDice) c.hitDice.max = p.hitDiceCount;
       return s;
     }
     case "initiative_rolled":

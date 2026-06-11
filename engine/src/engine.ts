@@ -14,6 +14,7 @@
 import { EventStore, type IEventStore, type GameEvent, type Visibility } from "./store.js";
 import { mulberry32, rollDice, rollD20, type Rng, type Advantage } from "./rng.js";
 import { type StatBlock, type Ability, SKILL_ABILITY, mod, checkModifier, saveModifier, healthDescriptor } from "./srd.js";
+import { type CharacterBuild, derive, deriveLevelUp } from "./character.js";
 import { fold, type GameState, type PendingCheck, activeOnSide } from "./state.js";
 import { combineAdvantage, attackFactors, autoCrit, saveFactors, autoFailsSave, checkFactors, type AttackKind } from "./conditions.js";
 
@@ -438,6 +439,73 @@ export class Engine {
   // ------------------------------------------------------------- reveals
   revealFact(factId: string, to: "party" | string[], text: string): void {
     this.emit("fact_revealed", to === "party" ? "public" : to, { factId, to, text });
+  }
+
+  // --------------------------------------------------- character creation
+  /** Create a player character from a validated build. The engine is the
+   *  legality authority: illegal builds throw before any event lands. The
+   *  event embeds the derived snapshot, so the fold applies data and replay
+   *  never recomputes rules. Sheet is private to the owner (decision 21). */
+  createCharacter(build: CharacterBuild): ReturnType<typeof derive> {
+    if (this.state().combatants[build.id]) throw new Error(`id taken: ${build.id}`);
+    const sheet = derive(build); // throws on illegal builds
+    this.stats.set(build.id, sheet);
+    this.emit("character_created", [build.id], {
+      id: build.id, name: sheet.name, side: "pc",
+      statRef: build.id, ac: sheet.ac, maxHp: sheet.maxHp,
+      ...(sheet.slots ? { slots: sheet.slots } : {}),
+      hitDice: { die: sheet.hitDice!.die, count: sheet.hitDice!.count },
+      level: sheet.level, species: sheet.species, class: sheet.class,
+      background: sheet.background, speed: sheet.speed,
+      abilities: sheet.finalAbilities, skills: sheet.skills,
+      saves: sheet.saves, attacks: sheet.attacks,
+      armorName: sheet.armorName, passivePerception: sheet.passivePerception,
+      traits: sheet.traits, build,
+    }, build.id);
+    return sheet;
+  }
+
+  /** The player's spoken origin story, on their private record. */
+  recordBackstory(charId: string, text: string, summary?: string): GameEvent {
+    if (!this.state().combatants[charId]) throw new Error(`unknown character: ${charId}`);
+    return this.emit("backstory_recorded", [charId],
+      { target: charId, text, ...(summary ? { summary } : {}) }, charId);
+  }
+
+  /** The portrait-anchor moment — public: the table sees faces. */
+  attachPortrait(charId: string, assetRef: string, prompt: string): GameEvent {
+    if (!this.state().combatants[charId]) throw new Error(`unknown character: ${charId}`);
+    return this.emit("portrait_attached", "public",
+      { target: charId, asset: assetRef, prompt }, charId);
+  }
+
+  // ------------------------------------------------------------ inventory
+  grantItem(charId: string, item: { id: string; name: string; tags?: string[] }, causes?: number): void {
+    if (!this.state().combatants[charId]) throw new Error(`unknown character: ${charId}`);
+    this.emit("item_granted", [charId], { target: charId, item }, null, causes);
+  }
+
+  /** Use (consume) an item the character actually carries. */
+  useItem(charId: string, itemId: string, causes?: number): void {
+    const c = this.state().combatants[charId];
+    if (!c) throw new Error(`unknown character: ${charId}`);
+    if (!c.inventory.some(i => i.id === itemId))
+      throw new Error(`${charId} does not carry ${itemId}`);
+    this.emit("item_used", [charId], { target: charId, itemId }, charId, causes);
+  }
+
+  // -------------------------------------------------------------- leveling
+  /** Validated level-up; hp by average or the player's reported roll. */
+  levelUp(charId: string, toLevel: number,
+          hp: { method: "average" } | { method: "roll"; reported: number }): void {
+    const c = this.state().combatants[charId];
+    if (!c) throw new Error(`unknown character: ${charId}`);
+    const created = this.store.timeline().find(e =>
+      e.type === "character_created" && (e.payload as any).id === charId);
+    if (!created) throw new Error(`${charId} was not made by createCharacter`);
+    const build = (created.payload as any).build as CharacterBuild;
+    const delta = deriveLevelUp({ ...build, level: c.level }, toLevel, hp); // throws if illegal
+    this.emit("level_up", [charId], { target: charId, ...delta }, charId);
   }
 
   // ------------------------------------------------- session & narration
