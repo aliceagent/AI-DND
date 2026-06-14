@@ -43,10 +43,45 @@ export const listeners = new Set<(msg: any) => void>();
 let ws: WebSocket | null = null;
 let toastSeq = 0;
 
+/** Where the WebSocket hub lives. Resolution order:
+ *   1. ?hub=<host[:port]> query param (a host shares this link with the table),
+ *   2. a build-time default (PUBLIC_HERMYS_HUB, e.g. when self-hosted),
+ *   3. same origin — the case where the orchestrator itself serves the PWA.
+ *  On Vercel there is no same-origin hub, so the join screen prompts for
+ *  the table address and stores it in (1). */
+const BUILD_HUB = (import.meta as any).env?.PUBLIC_HERMYS_HUB ?? "";
+
+export function hubHost(): string {
+  if (typeof location === "undefined") return "";
+  const q = new URLSearchParams(location.search).get("hub");
+  if (q) { try { localStorage.setItem("hermys.hub", q); } catch {} return q; }
+  try { const saved = localStorage.getItem("hermys.hub"); if (saved) return saved; } catch {}
+  return BUILD_HUB || location.host;
+}
+
+/** True when we're a static deploy with no hub configured yet (Vercel). */
+export function needsHub(): boolean {
+  if (typeof location === "undefined") return false;
+  return !new URLSearchParams(location.search).get("hub")
+    && !safeLocal("hermys.hub") && !BUILD_HUB
+    && /\.vercel\.app$/.test(location.host);
+}
+
+export function setHub(host: string): void {
+  try { localStorage.setItem("hermys.hub", host.replace(/^wss?:\/\//, "").replace(/\/+$/, "")); } catch {}
+}
+
+function safeLocal(k: string): string | null {
+  try { return localStorage.getItem(k); } catch { return null; }
+}
+
 export function connect(opts: { role: Role; characterId?: string }): void {
-  const proto = location.protocol === "https:" ? "wss" : "ws";
+  const host = hubHost();
+  // a remote hub on https is reached over wss; a bare/LAN host follows the page
+  const proto = /^(localhost|127\.|192\.168\.|10\.|\[)/.test(host) && location.protocol !== "https:"
+    ? "ws" : (location.protocol === "https:" ? "wss" : "ws");
   connection.set("connecting");
-  ws = new WebSocket(`${proto}://${location.host}/ws`);
+  ws = new WebSocket(`${proto}://${host}/ws`);
   ws.onopen = () => {
     connection.set("open");
     send({ type: "join", role: opts.role, characterId: opts.characterId });

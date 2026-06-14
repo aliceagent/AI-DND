@@ -1,6 +1,15 @@
 <script lang="ts">
   import { goto } from "$app/navigation";
-  import { connect, joined, lastError, toast, type Role } from "$lib/client";
+  import { connect, joined, lastError, toast, needsHub, setHub, type Role } from "$lib/client";
+
+  let askHub = $state(needsHub());
+  let hubInput = $state("");
+  function saveHub() {
+    if (!hubInput.trim()) return;
+    setHub(hubInput.trim());
+    askHub = false;
+    toast("Table address saved — pick a seat.");
+  }
 
   // the four Phase-1 archetypes the orchestrator seeds (engine/src/srd.ts)
   const CHARACTERS = [
@@ -33,6 +42,19 @@
 
 <h1>Hermys</h1>
 <p class="sub">the table is waiting</p>
+
+{#if askHub}
+  <div class="card hub">
+    <b>Connect to your table</b>
+    <span>This is the player app. Your host runs the table server and shares its
+      address (e.g. <code>hermys.local:8443</code> on the room's WiFi). Enter it once.</span>
+    <div class="pickrow">
+      <input placeholder="host:port" bind:value={hubInput}
+        onkeydown={e => e.key === "Enter" && saveHub()} />
+      <button class="go" onclick={saveHub}>Save</button>
+    </div>
+  </div>
+{:else}
 
 {#if last}
   <button class="card hero" onclick={() => join("box", last!.id)}>
@@ -68,6 +90,7 @@
   <b>♔ Host the table</b>
   <span>the gm seat — everything visible, beats, approvals, rewind</span>
 </button>
+{/if}
 
 <p class="hint">Phones need the mkcert CA installed once for mic access — see apps/orchestrator/scripts/setup-https.sh</p>
 
@@ -80,6 +103,10 @@
   .card span { color: #9b93ab; font-size: 0.88em; }
   .card.hero { border-color: #cdbf9a; background: linear-gradient(135deg, #2a2440, #1d1b27);
     box-shadow: 0 0 22px #cdbf9a22; }
+  .card.hub { border-color: #6b5e93; gap: 0.6rem; }
+  .card.hub .pickrow { width: 100%; margin-top: 0.3rem; }
+  .card.hub input { flex: 1; }
+  code { background: #2b2738; padding: 0.05em 0.4em; border-radius: 5px; font-size: 0.92em; }
   .pickrow { display: flex; gap: 0.6rem; margin: -0.2rem 0 0.7rem; }
   .pickrow select { flex: 1; }
   .go { background: #4a3f6b; border-color: #6b5e93; font-weight: 600; }
